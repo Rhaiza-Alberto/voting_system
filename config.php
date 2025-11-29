@@ -115,7 +115,7 @@ function requireLogin() {
 function requireAdmin() {
     requireLogin();
     if (!isAdmin()) {
-        header('Location: student_dashboard.php');
+        header('Location: students/student_dashboard.php');
         exit();
     }
 }

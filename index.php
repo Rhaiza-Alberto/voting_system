@@ -4,9 +4,9 @@ require_once 'config.php';
 // Redirect if already logged in
 if (isLoggedIn()) {
     if (isAdmin()) {
-        header('Location: admin_dashboard.php');
+        header('Location: admin/admin_dashboard.php');
     } else {
-        header('Location: student_dashboard.php');
+        header('Location: students/student_dashboard.php');
     }
     exit();
 }

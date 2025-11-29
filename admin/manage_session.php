@@ -1,5 +1,5 @@
 <?php
-require_once 'config.php';
+require_once '../config.php';
 requireAdmin();
 
 $conn = getDBConnection();
@@ -245,6 +245,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 $sessionQuery = "SELECT * FROM voting_sessions WHERE status IN ('pending', 'active', 'paused') ORDER BY id DESC LIMIT 1";
 $sessionResult = $conn->query($sessionQuery);
 $activeSession = $sessionResult->fetch_assoc();
+
+// Get group information if exists
+$groupInfo = null;
+if ($activeSession['group_id']) {
+    $groupQuery = "SELECT sg.group_name, COUNT(sgm.user_id) as member_count
+                   FROM student_groups sg
+                   LEFT JOIN student_group_members sgm ON sg.id = sgm.group_id
+                   WHERE sg.id = ?
+                   GROUP BY sg.id";
+    $stmt = $conn->prepare($groupQuery);
+    $stmt->bind_param("i", $activeSession['group_id']);
+    $stmt->execute();
+    $groupInfo = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+}
 
 // If no active session, redirect to dashboard
 if (!$activeSession) {
@@ -828,11 +843,24 @@ $conn->close();
         <?php endif; ?>
         
         <div class="card">
-            <h2><?php echo htmlspecialchars($activeSession['session_name']); ?></h2>
-            
-            <span class="session-status status-<?php echo $activeSession['status']; ?>">
-                Status: <?php echo strtoupper($activeSession['status']); ?>
-            </span>
+    <h2><?php echo htmlspecialchars($activeSession['session_name']); ?></h2>
+    
+    <span class="session-status status-<?php echo $activeSession['status']; ?>">
+        Status: <?php echo strtoupper($activeSession['status']); ?>
+    </span>
+    
+    <?php if ($groupInfo): ?>
+        <p style="margin-top: 1rem;">
+            <strong>Student Group:</strong> <?php echo htmlspecialchars($groupInfo['group_name']); ?>
+            (<?php echo $groupInfo['member_count']; ?> students)
+        </p>
+    <?php else: ?>
+        <p style="margin-top: 1rem;">
+            <strong>Eligible Voters:</strong> All Students
+        </p>
+    <?php endif; ?>
+</div>
+
             
             <div class="stats-grid">
                 <div class="stat-box">

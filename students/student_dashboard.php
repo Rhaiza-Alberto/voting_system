@@ -1,5 +1,5 @@
 <?php
-require_once 'config.php';
+require_once '../config.php';  // Changed from 'config.php' to '../config.php'
 requireLogin();
 
 $conn = getDBConnection();
@@ -31,8 +31,6 @@ if ($activeSession) {
         $votedPositions[] = $row['position_id'];
     }
 }
-
-$conn->close();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -244,10 +242,10 @@ $conn->close();
 </head>
 <body>
     <div class="navbar">
-        <h1> Student Dashboard</h1>
+        <h1>🎓 Student Dashboard</h1>
         <div class="user-info">
             <span><?php echo htmlspecialchars($_SESSION['full_name']); ?></span>
-            <a href="logout.php">Logout</a>
+            <a href="../logout.php">Logout</a>
         </div>
     </div>
     
@@ -258,19 +256,58 @@ $conn->close();
         </div>
         
         <div class="card">
-            <h3> Voting Session</h3>
+            <h3>🗳️ Voting Session</h3>
             
             <?php if ($activeSession): ?>
+                <?php
+                // Check eligibility for group-specific sessions
+                $isEligible = true;
+                $groupName = null;
+                
+                if ($activeSession['group_id']) {
+                    $eligibilityQuery = "SELECT sg.group_name 
+                                        FROM student_group_members sgm
+                                        JOIN student_groups sg ON sgm.group_id = sg.id
+                                        WHERE sgm.group_id = ? AND sgm.user_id = ?";
+                    $stmt = $conn->prepare($eligibilityQuery);
+                    $stmt->bind_param("ii", $activeSession['group_id'], $userId);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    
+                    if ($result->num_rows > 0) {
+                        $groupName = $result->fetch_assoc()['group_name'];
+                    } else {
+                        $isEligible = false;
+                    }
+                    $stmt->close();
+                }
+                ?>
+                
                 <span class="status-badge badge-active">ACTIVE SESSION</span>
                 <p class="info-text">
                     <strong>Session:</strong> <?php echo htmlspecialchars($activeSession['session_name']); ?>
                 </p>
                 
-                <?php if (count($votedPositions) > 0): ?>
-                    <span class="status-badge badge-voted">You have voted for <?php echo count($votedPositions); ?> position(s)</span>
+                <?php if ($groupName): ?>
+                    <p class="info-text" style="margin-top: 0.5rem;">
+                        <strong>For Group:</strong> <?php echo htmlspecialchars($groupName); ?>
+                    </p>
                 <?php endif; ?>
                 
-                <a href="vote.php" class="btn btn-primary">Cast Your Vote</a>
+                <?php if (!$isEligible): ?>
+                    <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 1rem; border-radius: 0.5rem; margin-top: 1rem;">
+                        <p style="color: #92400e; font-weight: 600;">⚠️ Not Eligible</p>
+                        <p style="color: #78350f; font-size: 0.9rem; margin-top: 0.5rem;">
+                            This voting session is for a specific student group. You are not a member of that group.
+                        </p>
+                    </div>
+                <?php else: ?>
+                    <?php if (count($votedPositions) > 0): ?>
+                        <span class="status-badge badge-voted">You have voted for <?php echo count($votedPositions); ?> position(s)</span>
+                    <?php endif; ?>
+                    
+                    <a href="vote.php" class="btn btn-primary">Cast Your Vote</a>
+                <?php endif; ?>
             <?php else: ?>
                 <div class="empty-state">
                     <span class="status-badge badge-inactive">NO ACTIVE SESSION</span>
@@ -280,7 +317,7 @@ $conn->close();
         </div>
         
         <div class="card">
-            <h3> Your Candidacies</h3>
+            <h3>🏆 Your Candidacies</h3>
             
             <?php if ($candidacies->num_rows > 0): ?>
                 <ul class="candidacy-list">
@@ -301,10 +338,11 @@ $conn->close();
         </div>
         
         <div class="card">
-            <h3> View Results</h3>
+            <h3>📊 View Results</h3>
             <p class="info-text">Check the current voting results and see who's leading in each position.</p>
             <a href="student_results.php" class="btn btn-primary">View Results</a>
         </div>
     </div>
 </body>
 </html>
+<?php $conn->close(); ?>

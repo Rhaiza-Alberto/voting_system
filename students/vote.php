@@ -25,6 +25,23 @@ if (!$activeSession) {
 $sessionId = $activeSession['id'];
 $currentPositionId = $activeSession['current_position_id'];
 
+// Check if user is eligible to vote in this session
+if ($activeSession['group_id']) {
+    $eligibilityQuery = "SELECT COUNT(*) as count FROM student_group_members 
+                         WHERE group_id = ? AND user_id = ?";
+    $stmt = $conn->prepare($eligibilityQuery);
+    $stmt->bind_param("ii", $activeSession['group_id'], $userId);
+    $stmt->execute();
+    $isEligible = $stmt->get_result()->fetch_assoc()['count'] > 0;
+    $stmt->close();
+    
+    if (!$isEligible) {
+        $conn->close();
+        header('Location: student_dashboard.php?error=not_eligible');
+        exit();
+    }
+}
+
 // Debug: Log voting attempt
 $debugInfo[] = "Session ID: " . $sessionId;
 $debugInfo[] = "User ID: " . $userId;
