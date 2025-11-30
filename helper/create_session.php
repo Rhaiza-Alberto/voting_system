@@ -1,5 +1,5 @@
 <?php
-require_once 'config.php';
+require_once '../config.php';
 requireAdmin();
 
 $error = '';
@@ -77,7 +77,7 @@ $conn->close();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Create Voting Session</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -90,7 +90,7 @@ $conn->close();
                     <p>Set up a new election</p>
                 </div>
             </div>
-            <a href="admin_dashboard.php" class="btn-modern btn-secondary">← Back to Dashboard</a>
+            <a href="../admin/admin_dashboard.php" class="btn-modern btn-secondary">← Back to Dashboard</a>
         </div>
     </nav>
 
@@ -103,8 +103,8 @@ $conn->close();
             <div class="alert alert-success fade-in">
                 <?php echo htmlspecialchars($success); ?>
                 <div style="margin-top: 1rem; display: flex; gap: 1rem;">
-                    <a href="manage_candidates.php" class="btn-modern btn-primary">→ Nominate Candidates</a>
-                    <a href="manage_session.php" class="btn-modern btn-success">→ Manage Session</a>
+                    <a href="../admin/manage_candidates.php" class="btn-modern btn-primary">→ Nominate Candidates</a>
+                    <a href="../admin/manage_session.php" class="btn-modern btn-success">→ Manage Session</a>
                 </div>
             </div>
         <?php endif; ?>
@@ -194,7 +194,7 @@ $conn->close();
                         <button type="submit" name="create_session" class="btn-modern btn-primary">
                             ✅ Create Session
                         </button>
-                        <a href="admin_dashboard.php" class="btn-modern btn-secondary">
+                        <a href="admin/admin_dashboard.php" class="btn-modern btn-secondary">
                             Cancel
                         </a>
                     </div>

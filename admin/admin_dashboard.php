@@ -117,7 +117,7 @@ $conn->close();
                     <a href="../helper/create_session.php" class="btn-modern btn-primary">
                         ➕ Create New Session
                     </a>
-                    <a href="manage_students.php" class="btn-modern btn-success">
+                    <a href="../students/manage_students.php" class="btn-modern btn-success">
                         👥 Manage Students
                     </a>
                     <a href="manage_positions.php" class="btn-modern btn-warning">

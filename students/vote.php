@@ -1,7 +1,7 @@
 <?php
-require_once 'config.php';
-require_once 'email_helper.php';
-require_once 'notification_helper.php';
+require_once '../config.php';
+require_once '../email_helper.php';
+require_once '../notification_helper.php';
 requireLogin();
 
 $conn = getDBConnection();
@@ -47,7 +47,7 @@ $debugInfo[] = "Session ID: " . $sessionId;
 $debugInfo[] = "User ID: " . $userId;
 $debugInfo[] = "Current Position ID: " . ($currentPositionId ? $currentPositionId : "NONE OPEN");
 
-// Get user information with computed full_name (3NF compliant) - FIXED LINE 31
+// Get user information with computed full_name (3NF compliant)
 $userQuery = "SELECT TRIM(CONCAT_WS(' ', first_name, middle_name, last_name)) AS full_name, 
               student_id 
               FROM users WHERE id = ?";
@@ -57,7 +57,7 @@ $stmt->execute();
 $userInfo = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 
-// Check if user is a candidate or elected in any position (for display purposes only - NOT to restrict voting)
+// Check if user is a candidate or elected in any position (for display purposes only)
 $userCandidacyQuery = "SELECT p.position_name, c.status 
                       FROM candidates c 
                       JOIN positions p ON c.position_id = p.id 
@@ -128,7 +128,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['candidate_id']) && is
     
     // Validate that this is the current position open for voting
     if ($positionId != $currentPositionId) {
-        $message = ' Invalid position! This position is not currently open for voting. The admin may have closed it.';
+        $message = '❌ Invalid position! This position is not currently open for voting. The admin may have closed it.';
         $messageType = 'error';
         $debugInfo[] = "Error: Position mismatch";
     } else {
@@ -141,7 +141,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['candidate_id']) && is
         $stmt->close();
         
         if ($alreadyVoted) {
-            $message = ' You have already voted for this position!';
+            $message = '⚠️ You have already voted for this position!';
             $messageType = 'warning';
             $debugInfo[] = "Error: Duplicate vote attempt blocked";
         } else {
@@ -154,7 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['candidate_id']) && is
             $stmt->close();
             
             if (!$candidateValid) {
-                $message = ' Invalid candidate selection!';
+                $message = '❌ Invalid candidate selection!';
                 $messageType = 'error';
                 $debugInfo[] = "Error: Invalid candidate";
             } else {
@@ -163,104 +163,104 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['candidate_id']) && is
                 $voteStmt->bind_param("iiii", $sessionId, $userId, $candidateId, $positionId);
                 
                 if ($voteStmt->execute()) {
-    // ✅ VOTE SUCCESSFUL - SEND NOTIFICATIONS
-    
-    // Get voter details
-    $voterQuery = "SELECT TRIM(CONCAT_WS(' ', first_name, middle_name, last_name)) AS full_name, email 
-                   FROM users WHERE id = ?";
-    $stmt = $conn->prepare($voterQuery);
-    $stmt->bind_param("i", $userId);
-    $stmt->execute();
-    $voter = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
-    
-    // Get position details
-    $positionQuery = "SELECT position_name FROM positions WHERE id = ?";
-    $stmt = $conn->prepare($positionQuery);
-    $stmt->bind_param("i", $positionId);
-    $stmt->execute();
-    $position = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
-    
-    // Send confirmation email
-    $email->sendVotingConfirmationEmail(
-        $voter['email'],
-        $voter['full_name'],
-        $position['position_name']
-    );
-    
-    // Notify all admins
-    $adminQuery = "SELECT id FROM users WHERE role = 'admin'";
-    $admins = $conn->query($adminQuery);
-    
-    while ($admin = $admins->fetch_assoc()) {
-        $notif->notifyAdminNewVote(
-            $admin['id'],
-            $voter['full_name'],
-            $position['position_name']
-        );
-    }
-    
-    // Check milestones
-    $totalStudents = $conn->query("SELECT COUNT(*) as count FROM users WHERE role = 'student'")->fetch_assoc()['count'];
-    
-    $votersQuery = "SELECT COUNT(DISTINCT voter_id) as count FROM votes WHERE session_id = ? AND position_id = ?";
-    $stmt = $conn->prepare($votersQuery);
-    $stmt->bind_param("ii", $sessionId, $positionId);
-    $stmt->execute();
-    $votersCount = $stmt->get_result()->fetch_assoc()['count'];
-    $stmt->close();
-    
-    if ($totalStudents > 0) {
-        $turnoutPercentage = ($votersCount / $totalStudents) * 100;
-        
-        // Get session name
-        $sessionQuery = "SELECT session_name FROM voting_sessions WHERE id = ?";
-        $stmt = $conn->prepare($sessionQuery);
-        $stmt->bind_param("i", $sessionId);
-        $stmt->execute();
-        $session = $stmt->get_result()->fetch_assoc();
-        $stmt->close();
-        
-        // Check milestone notifications
-        $milestones = [25, 50, 75, 100];
-        foreach ($milestones as $milestone) {
-            $previousTurnout = (($votersCount - 1) / $totalStudents) * 100;
-            if ($turnoutPercentage >= $milestone && $previousTurnout < $milestone) {
-                $admins->data_seek(0);
-                while ($admin = $admins->fetch_assoc()) {
-                    $notif->notifyAdminMilestone(
-                        $admin['id'],
-                        $session['session_name'],
-                        $milestone,
+                    // ✅ VOTE SUCCESSFUL - SEND NOTIFICATIONS
+                    
+                    // Get voter details
+                    $voterQuery = "SELECT TRIM(CONCAT_WS(' ', first_name, middle_name, last_name)) AS full_name, email 
+                                   FROM users WHERE id = ?";
+                    $stmt = $conn->prepare($voterQuery);
+                    $stmt->bind_param("i", $userId);
+                    $stmt->execute();
+                    $voter = $stmt->get_result()->fetch_assoc();
+                    $stmt->close();
+                    
+                    // Get position details
+                    $positionQuery = "SELECT position_name FROM positions WHERE id = ?";
+                    $stmt = $conn->prepare($positionQuery);
+                    $stmt->bind_param("i", $positionId);
+                    $stmt->execute();
+                    $position = $stmt->get_result()->fetch_assoc();
+                    $stmt->close();
+                    
+                    // Send confirmation email
+                    $email->sendVotingConfirmationEmail(
+                        $voter['email'],
+                        $voter['full_name'],
                         $position['position_name']
                     );
                     
-                    if ($milestone == 100) {
-                        $notif->notifyAdminFullTurnout(
+                    // Notify all admins
+                    $adminQuery = "SELECT id FROM users WHERE role = 'admin'";
+                    $admins = $conn->query($adminQuery);
+                    
+                    while ($admin = $admins->fetch_assoc()) {
+                        $notif->notifyAdminNewVote(
                             $admin['id'],
-                            $session['session_name'],
+                            $voter['full_name'],
                             $position['position_name']
                         );
                     }
+                    
+                    // Check milestones
+                    $totalStudents = $conn->query("SELECT COUNT(*) as count FROM users WHERE role = 'student'")->fetch_assoc()['count'];
+                    
+                    $votersQuery = "SELECT COUNT(DISTINCT voter_id) as count FROM votes WHERE session_id = ? AND position_id = ?";
+                    $stmt = $conn->prepare($votersQuery);
+                    $stmt->bind_param("ii", $sessionId, $positionId);
+                    $stmt->execute();
+                    $votersCount = $stmt->get_result()->fetch_assoc()['count'];
+                    $stmt->close();
+                    
+                    if ($totalStudents > 0) {
+                        $turnoutPercentage = ($votersCount / $totalStudents) * 100;
+                        
+                        // Get session name
+                        $sessionQuery = "SELECT session_name FROM voting_sessions WHERE id = ?";
+                        $stmt = $conn->prepare($sessionQuery);
+                        $stmt->bind_param("i", $sessionId);
+                        $stmt->execute();
+                        $session = $stmt->get_result()->fetch_assoc();
+                        $stmt->close();
+                        
+                        // Check milestone notifications
+                        $milestones = [25, 50, 75, 100];
+                        foreach ($milestones as $milestone) {
+                            $previousTurnout = (($votersCount - 1) / $totalStudents) * 100;
+                            if ($turnoutPercentage >= $milestone && $previousTurnout < $milestone) {
+                                $admins->data_seek(0);
+                                while ($admin = $admins->fetch_assoc()) {
+                                    $notif->notifyAdminMilestone(
+                                        $admin['id'],
+                                        $session['session_name'],
+                                        $milestone,
+                                        $position['position_name']
+                                    );
+                                    
+                                    if ($milestone == 100) {
+                                        $notif->notifyAdminFullTurnout(
+                                            $admin['id'],
+                                            $session['session_name'],
+                                            $position['position_name']
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    $message = '✅ Your vote has been recorded successfully!';
+                    $messageType = 'success';
+                    $hasVoted = true;
+                    
+                    // Log the vote
+                    error_log("VOTE: User=" . $userId . " (" . $userInfo['student_id'] . "), Position=" . $positionId . ", Candidate=" . $candidateId);
+                } else {
+                    // VOTE FAILED
+                    $message = '❌ Failed to record your vote. Error: ' . $voteStmt->error;
+                    $messageType = 'error';
+                    $debugInfo[] = "Error: Database insert failed - " . $voteStmt->error;
                 }
-            }
-        }
-    }
-    
-    $message = ' Your vote has been recorded successfully!';
-    $messageType = 'success';
-    $hasVoted = true;
-    
-    // Log the vote
-    error_log("VOTE: User=" . $userId . " (" . $userInfo['student_id'] . "), Position=" . $positionId . ", Candidate=" . $candidateId);
-} else {
-    // VOTE FAILED
-    $message = ' Failed to record your vote. Error: ' . $voteStmt->error;
-    $messageType = 'error';
-    $debugInfo[] = "Error: Database insert failed - " . $voteStmt->error;
-}
-$voteStmt->close();
+                $voteStmt->close();
             }
         }
     }
@@ -345,7 +345,7 @@ $conn->close();
 </head>
 <body>
     <div class="navbar">
-        <h1> Cast Your Vote</h1>
+        <h1>🗳️ Cast Your Vote</h1>
         <div class="user-info">
             <span><?php echo htmlspecialchars($userInfo['full_name']); ?> (<?php echo htmlspecialchars($userInfo['student_id']); ?>)</span>
             <a href="student_dashboard.php">← Back</a>
@@ -364,7 +364,7 @@ $conn->close();
         
         <?php if ($isCandidate): ?>
             <div class="candidate-status-info">
-                <strong> Your Candidacy Status:</strong>
+                <strong>📋 Your Candidacy Status:</strong>
                 <ul>
                     <?php
                     $userCandidacies->data_seek(0);
@@ -378,7 +378,7 @@ $conn->close();
         
         <?php if ($noPositionOpen): ?>
             <div class="empty-state">
-                <div class="empty-state-icon"></div>
+                <div class="empty-state-icon">⏳</div>
                 <h3>No Position Open for Voting</h3>
                 <p><strong>What this means:</strong> The administrator hasn't opened a position for voting yet, or closed the previous position and hasn't opened the next one.</p>
                 <p style="margin-top:15px;"><strong>What to do:</strong> Please wait. The page will auto-refresh. When a position opens, you'll be able to vote!</p>
@@ -386,7 +386,7 @@ $conn->close();
             </div>
             
             <div class="info-banner">
-                <strong> How Sequential Voting Works:</strong>
+                <strong>ℹ️ How Sequential Voting Works:</strong>
                 <ul>
                     <li>Admin opens ONE position at a time (e.g., President)</li>
                     <li>ALL students can vote for that position</li>
@@ -397,11 +397,11 @@ $conn->close();
             </div>
         <?php elseif ($hasVoted): ?>
             <div class="success-card">
-                <h3>Vote Recorded!</h3>
+                <h3>✅ Vote Recorded!</h3>
                 <p>Thank you for voting for <strong><?php echo htmlspecialchars($currentPosition['position_name']); ?></strong></p>
                 <p>Your vote has been securely recorded and counted.</p>
-                <p style="font-size:0.95em; opacity:0.9; margin-top:20px;"> <?php echo $totalVotes; ?> total votes cast so far</p>
-                <a href="student_results.php" style="background:white; color:#10b981; margin-top:20px; padding:12px 30px; text-decoration:none; display:inline-block; border-radius:8px; font-weight:600;">View Results</a>
+                <p style="font-size:0.95em; opacity:0.9; margin-top:20px;">📊 <?php echo $totalVotes; ?> total votes cast so far</p>
+                <a href="../views/student_results.php" style="background:white; color:#10b981; margin-top:20px; padding:12px 30px; text-decoration:none; display:inline-block; border-radius:8px; font-weight:600;">View Results</a>
             </div>
             
             <div class="info-banner">
@@ -412,7 +412,7 @@ $conn->close();
             
             <div class="position-card">
                 <div class="position-header">
-                    <h3> <?php echo htmlspecialchars($currentPosition['position_name']); ?></h3>
+                    <h3>🏆 <?php echo htmlspecialchars($currentPosition['position_name']); ?></h3>
                     <span class="vote-count-badge">Priority #<?php echo $currentPosition['position_order']; ?> • <?php echo $totalVotes; ?> votes cast</span>
                 </div>
                 
@@ -437,11 +437,11 @@ $conn->close();
                                 </label>
                             <?php endwhile; ?>
                             
-                            <button type="submit" class="vote-btn" onclick="return confirm(' Confirm your vote?\n\nYou can only vote ONCE for this position!\n\nClick OK to submit.')">✅ Submit My Vote</button>
+                            <button type="submit" class="vote-btn" onclick="return confirm('⚠️ Confirm your vote?\n\nYou can only vote ONCE for this position!\n\nClick OK to submit.')">✅ Submit My Vote</button>
                         </form>
                     <?php else: ?>
                         <div class="no-candidates">
-                            <p style="font-size:1.2em;"> No candidates nominated yet</p>
+                            <p style="font-size:1.2em;">⚠️ No candidates nominated yet</p>
                             <p style="margin-top:10px; color:#a0aec0;">The administrator needs to nominate candidates for this position first.</p>
                         </div>
                     <?php endif; ?>
@@ -451,7 +451,7 @@ $conn->close();
         
         <?php if (count($debugInfo) > 0 && (isset($_GET['debug']) || $messageType === 'error')): ?>
             <div class="debug-info">
-                <h4> Debug Information:</h4>
+                <h4>🔧 Debug Information:</h4>
                 <ul>
                     <?php foreach ($debugInfo as $info): ?>
                         <li><?php echo htmlspecialchars($info); ?></li>

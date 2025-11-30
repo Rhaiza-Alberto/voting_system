@@ -1,6 +1,6 @@
 <?php
-require_once 'config.php';
-require_once 'email_helper.php';
+require_once '../config.php';
+require_once '../helper/email_helper.php';
 requireAdmin();
 
 
@@ -438,7 +438,7 @@ $conn->close();
 <body>
     <div class="navbar">
         <h1> Manage Students</h1>
-        <a href="admin_dashboard.php">← Back to Dashboard</a>
+        <a href="../admin/admin_dashboard.php">← Back to Dashboard</a>
     </div>
     
     <div class="container">

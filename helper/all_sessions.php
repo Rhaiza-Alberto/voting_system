@@ -1,5 +1,5 @@
 <?php
-require_once 'config.php';
+require_once '../config.php';
 requireAdmin();
 
 $conn = getDBConnection();
@@ -52,7 +52,7 @@ $conn->close();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>All Sessions - Voting System</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -65,7 +65,7 @@ $conn->close();
                     <p>Manage all elections</p>
                 </div>
             </div>
-            <a href="admin_dashboard.php" class="btn-modern btn-secondary">← Back to Dashboard</a>
+            <a href="../admin/admin_dashboard.php" class="btn-modern btn-secondary">← Back to Dashboard</a>
         </div>
     </nav>
 
@@ -120,10 +120,10 @@ $conn->close();
                         </p>
                     </div>
                     <div style="display: flex; gap: 0.5rem;">
-                        <a href="manage_session.php?id=<?php echo $session['id']; ?>" class="btn-modern btn-primary">
+                        <a href="../admin/manage_session.php?id=<?php echo $session['id']; ?>" class="btn-modern btn-primary">
                             Manage
                         </a>
-                        <a href="view_results.php?session_id=<?php echo $session['id']; ?>" class="btn-modern btn-secondary">
+                        <a href="../views/view_results.php?session_id=<?php echo $session['id']; ?>" class="btn-modern btn-secondary">
                             Results
                         </a>
                     </div>

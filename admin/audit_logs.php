@@ -1,5 +1,5 @@
 <?php
-require_once 'config.php';
+require_once '../config.php';
 requireAdmin();
 
 $conn = getDBConnection();
@@ -78,7 +78,7 @@ if ($debugMode) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <title>Audit Logs - Election History</title>
 </head>
@@ -92,7 +92,7 @@ if ($debugMode) {
                     <p>Election History</p>
                 </div>
             </div>
-            <a href="admin/admin_dashboard.php" class="btn-modern btn-secondary">← Back to Dashboard</a>
+            <a href="../admin/admin_dashboard.php" class="btn-modern btn-secondary">← Back to Dashboard</a>
         </div>
     </nav>
     
@@ -213,7 +213,7 @@ if ($debugMode) {
                         </p>
                     </div>
                     <div class="header-controls">
-                        <a href="views/view_results.php?session_id=<?php echo $sessionId; ?>" 
+                        <a href="../views/view_results.php?session_id=<?php echo $sessionId; ?>" 
                            class="btn-modern btn-primary">
                             📊 View Results
                         </a>

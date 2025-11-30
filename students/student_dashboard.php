@@ -1,5 +1,5 @@
 <?php
-require_once '../config.php';  // Changed from 'config.php' to '../config.php'
+require_once '../config.php';
 requireLogin();
 
 $conn = getDBConnection();
@@ -340,7 +340,7 @@ if ($activeSession) {
         <div class="card">
             <h3>📊 View Results</h3>
             <p class="info-text">Check the current voting results and see who's leading in each position.</p>
-            <a href="student_results.php" class="btn btn-primary">View Results</a>
+            <a href="../students/student_results.php" class="btn btn-primary">View Results</a>
         </div>
     </div>
 </body>

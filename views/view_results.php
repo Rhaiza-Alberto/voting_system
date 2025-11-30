@@ -1,5 +1,5 @@
 <?php
-require_once 'config.php';
+require_once '../config.php';
 requireAdmin();
 
 $conn = getDBConnection();
@@ -382,7 +382,7 @@ $positions = $conn->query($positionsQuery);
 <body>
     <div class="navbar">
         <h1> Election Results</h1>
-        <a href="admin_dashboard.php">← Back to Dashboard</a>
+        <a href="../admin/admin_dashboard.php">← Back to Dashboard</a>
     </div>
     
     <div class="container">
@@ -432,7 +432,7 @@ $positions = $conn->query($positionsQuery);
         
         <!-- Export Buttons -->
         <div class="export-buttons">
-            <a href="export_results_excel.php?session_id=<?php echo $sessionId; ?>" class="btn btn-success">
+            <a href="../admin/export_results_excel.php?session_id=<?php echo $sessionId; ?>" class="btn btn-success">
                 Export to Excel
             </a>
             <!--
