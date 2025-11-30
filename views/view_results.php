@@ -177,7 +177,7 @@ $positions = $conn->query($positionsQuery);
         }
         
         .btn {
-            padding: 10px 20px;
+            padding: 12px 24px;
             border: none;
             border-radius: 8px;
             font-size: 0.95em;
@@ -185,7 +185,9 @@ $positions = $conn->query($positionsQuery);
             font-weight: 600;
             transition: all 0.3s;
             text-decoration: none;
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
         }
         
         .btn-primary {
@@ -196,6 +198,7 @@ $positions = $conn->query($positionsQuery);
         .btn-primary:hover {
             background: #059669;
             transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
         }
         
         .btn-success {
@@ -206,6 +209,18 @@ $positions = $conn->query($positionsQuery);
         .btn-success:hover {
             background: #10b981;
             transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(52, 211, 153, 0.3);
+        }
+        
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #dc2626;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(239, 68, 68, 0.3);
         }
         
         .btn-warning {
@@ -216,6 +231,7 @@ $positions = $conn->query($positionsQuery);
         .btn-warning:hover {
             background: #d97706;
             transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(245, 158, 11, 0.3);
         }
         
         .empty-state {
@@ -376,24 +392,33 @@ $positions = $conn->query($positionsQuery);
                 flex-direction: column;
                 gap: 10px;
             }
+            
+            .export-buttons {
+                flex-direction: column;
+            }
+            
+            .btn {
+                width: 100%;
+                justify-content: center;
+            }
         }
     </style>
 </head>
 <body>
     <div class="navbar">
-        <h1> Election Results</h1>
+        <h1>📊 Election Results</h1>
         <a href="../admin/admin_dashboard.php">← Back to Dashboard</a>
     </div>
     
     <div class="container">
         <?php if ($noSession): ?>
             <div class="empty-state">
-               
+                <div class="empty-state-icon">🗳️</div>
                 <h2>No Voting Sessions Yet</h2>
                 <p>There are no voting sessions to display results for.</p>
                 <p style="color: #a0aec0; font-size: 0.95em;">Create a voting session to get started!</p>
                 <a href="create_session.php" class="btn btn-primary" style="margin-top: 20px; font-size: 1.1em; padding: 12px 30px;">
-                     Create New Session
+                    ➕ Create New Session
                 </a>
             </div>
         <?php else: 
@@ -402,7 +427,7 @@ $positions = $conn->query($positionsQuery);
         
         <!-- Session Selector -->
         <div class="session-selector">
-            <label for="session-select"> Select Election Session to View:</label>
+            <label for="session-select">📋 Select Election Session to View:</label>
             <select id="session-select" onchange="window.location.href='view_results.php?session_id=' + this.value">
                 <?php 
                 $allSessions->data_seek(0);
@@ -433,15 +458,13 @@ $positions = $conn->query($positionsQuery);
         <!-- Export Buttons -->
         <div class="export-buttons">
             <a href="../admin/export_results_excel.php?session_id=<?php echo $sessionId; ?>" class="btn btn-success">
-                Export to Excel
+                📊 Export to Excel (CSV)
             </a>
-            <!--
-            <a href="export_results_pdf.php?session_id=<?php echo $sessionId; ?>" class="btn btn-warning" target="_blank">
-                 Export to PDF
+            <a href="../admin/export_results_pdf.php?session_id=<?php echo $sessionId; ?>" class="btn btn-danger" target="_blank">
+                📄 Export to PDF
             </a>
-                -->
             <button onclick="window.print()" class="btn btn-primary">
-                 Print Results
+                🖨️ Print Results
             </button>
         </div>
         
@@ -451,13 +474,13 @@ $positions = $conn->query($positionsQuery);
         
         if ($positions->num_rows === 0): ?>
             <div class="empty-state">
-                <p> No positions created yet.</p>
+                <p>📋 No positions created yet.</p>
             </div>
         <?php else:
             while ($position = $positions->fetch_assoc()): 
                 $positionId = $position['id'];
                 
-                // First, check if there's a stored winner for this position in this session (3NF - no vote_count stored)
+                // First, check if there's a stored winner for this position in this session
                 $storedWinnerQuery = "SELECT w.user_id, 
                                       TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS full_name,
                                       u.student_id
@@ -470,13 +493,12 @@ $positions = $conn->query($positionsQuery);
                 $storedWinner = $winnerStmt->get_result()->fetch_assoc();
                 $winnerStmt->close();
                 
-                // If winner exists, compute their vote count dynamically (3NF compliant)
+                // If winner exists, compute their vote count dynamically
                 if ($storedWinner) {
                     $storedWinner['vote_count'] = getWinnerVoteCount($sessionId, $positionId, $storedWinner['user_id'], $conn);
                 }
                 
                 // Get all candidates who received votes for this position
-                // Use snapshot data when candidate has been deleted (candidate_id is NULL or JOIN fails)
                 $resultsQuery = "SELECT v.candidate_id, c.user_id,
                                 COALESCE(
                                     NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)), ''),
@@ -508,14 +530,12 @@ $positions = $conn->query($positionsQuery);
                 $tempResults = [];
                 
                 if ($storedWinner) {
-                    // Use stored winner if available
                     $winner = $storedWinner;
                     $electedUsers[] = $storedWinner['user_id'];
                 }
                 
                 // Collect all results
                 while ($row = $results->fetch_assoc()) {
-                    // If user data is missing (candidate was deleted), try to get from stored winner
                     if (!$row['full_name'] && $storedWinner && $row['candidate_id']) {
                         $row['full_name'] = $storedWinner['full_name'];
                         $row['student_id'] = $storedWinner['student_id'];
@@ -524,7 +544,6 @@ $positions = $conn->query($positionsQuery);
                     
                     $tempResults[] = $row;
                     
-                    // Find winner from vote counts if not already set
                     if (!$winner && $row['full_name'] && $row['user_id'] && !in_array($row['user_id'], $electedUsers) && $row['vote_count'] > 0) {
                         $winner = $row;
                         if ($row['user_id']) {
@@ -542,7 +561,6 @@ $positions = $conn->query($positionsQuery);
                 
                 <div class="results-content">
                     <?php if (count($tempResults) > 0 || $storedWinner): 
-                        // If we have stored winner but no results, create a result entry
                         if (count($tempResults) == 0 && $storedWinner) {
                             $tempResults[] = $storedWinner;
                         }
@@ -562,7 +580,7 @@ $positions = $conn->query($positionsQuery);
                                     }
                                     ?>
                                     <?php if ($isWinner): ?>
-                                        <span class="winner-badge"> WINNER</span>
+                                        <span class="winner-badge">🏆 WINNER</span>
                                     <?php endif; ?>
                                 </div>
                                 <div class="candidate-id">
