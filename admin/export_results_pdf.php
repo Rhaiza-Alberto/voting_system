@@ -321,7 +321,6 @@ $stmt->close();
 <body>
     <div class="no-print">
         <button onclick="downloadPDF()" class="btn btn-download">📥 Download PDF</button>
-        <button onclick="window.print()" class="btn">🖨️ Print</button>
         <a href="view_results.php" class="btn btn-secondary">← Back</a>
     </div>
     
