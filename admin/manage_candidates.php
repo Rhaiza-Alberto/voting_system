@@ -106,12 +106,13 @@ function nominateCandidate($conn, $userId, $positionId, &$message, &$messageType
 // Handle candidate removal
 if (isset($_GET['remove'])) {
     $candidateId = $_GET['remove'];
+    $adminId = $_SESSION['user_id'];
     
-    // Get candidate info including snapshot before deletion
+    // Get candidate info including snapshot before soft deletion
     $candidateInfoQuery = "SELECT 
                            COALESCE(c.snapshot_full_name, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name))) as candidate_name,
                            p.position_name,
-                           (SELECT COUNT(*) FROM votes WHERE candidate_id = c.id) as vote_count
+                           (SELECT COUNT(*) FROM votes WHERE candidate_id = c.id AND deleted_at IS NULL) as vote_count
                            FROM candidates c
                            LEFT JOIN users u ON c.user_id = u.id
                            JOIN positions p ON c.position_id = p.id
@@ -124,22 +125,23 @@ if (isset($_GET['remove'])) {
     $stmt->close();
     
     if ($voteCount > 0) {
-        $message = ' Warning: This candidate has ' . $voteCount . ' vote(s). ';
+        $message = '⚠️ Warning: This candidate has ' . $voteCount . ' vote(s). ';
     }
     
-    // Delete the candidate (votes will be preserved with candidate_id = NULL)
-    $deleteStmt = $conn->prepare("DELETE FROM candidates WHERE id = ?");
-    $deleteStmt->bind_param("i", $candidateId);
+    // Soft delete the candidate using stored procedure
+    $deleteStmt = $conn->prepare("CALL sp_soft_delete_candidate(?, ?)");
+    $deleteStmt->bind_param("ii", $candidateId, $adminId);
+    
     if ($deleteStmt->execute()) {
         if ($voteCount > 0) {
-            $message .= ' Candidate ' . htmlspecialchars($candidateInfo['candidate_name']) . ' removed. ' . 
-                      $voteCount . ' vote(s) orphaned but preserved in audit logs.';
+            $message .= '✅ Candidate ' . htmlspecialchars($candidateInfo['candidate_name']) . ' soft deleted. ' . 
+                      $voteCount . ' vote(s) preserved in audit logs.';
         } else {
-            $message = ' Candidate removed successfully!';
+            $message = '✅ Candidate soft deleted successfully!';
         }
         $messageType = 'success';
     } else {
-        $message = ' Failed to remove candidate!';
+        $message = '⛔ Failed to remove candidate!';
         $messageType = 'error';
     }
     $deleteStmt->close();
@@ -167,6 +169,7 @@ $candidatesQuery = "SELECT
                         c.id,
                         c.user_id,
                         c.status,
+                        c.deleted_at,
                         COALESCE(
                             c.snapshot_full_name,
                             TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)),
@@ -175,13 +178,15 @@ $candidatesQuery = "SELECT
                         COALESCE(c.snapshot_student_id, u.student_id, 'N/A') as student_id,
                         p.position_name, 
                         p.position_order,
-                        (SELECT COUNT(*) FROM votes v WHERE v.candidate_id = c.id) as vote_count,
-                        (SELECT COUNT(DISTINCT v.session_id) FROM votes v WHERE v.candidate_id = c.id) as sessions_count,
+                        (SELECT COUNT(*) FROM votes v WHERE v.candidate_id = c.id AND v.deleted_at IS NULL) as vote_count,
+                        (SELECT COUNT(DISTINCT v.session_id) FROM votes v WHERE v.candidate_id = c.id AND v.deleted_at IS NULL) as sessions_count,
                         CASE WHEN u.id IS NULL THEN 1 ELSE 0 END as user_deleted
                     FROM candidates c 
                     LEFT JOIN users u ON c.user_id = u.id 
                     JOIN positions p ON c.position_id = p.id 
+                    WHERE c.deleted_at IS NULL
                     ORDER BY p.position_order, c.snapshot_full_name, u.last_name, u.first_name";
+
 $candidates = $conn->query($candidatesQuery);
 
 // Get count of orphaned votes

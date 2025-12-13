@@ -55,10 +55,11 @@ $electedUsers = [];
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Election Results - <?php echo htmlspecialchars($sessionName); ?></title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         @page {
             size: A4;
-            margin: 15mm;
+            margin: 20mm;
         }
         
         * {
@@ -68,268 +69,330 @@ $electedUsers = [];
         }
         
         body {
-            font-family: 'Segoe UI', 'Arial', 'Helvetica', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             line-height: 1.6;
-            color: #2d3748;
+            color: #1f2937;
+            background: #ffffff;
+            padding: 30px;
+        }
+        
+        /* Control Panel */
+        .control-panel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
             background: white;
-            padding: 20px;
+            padding: 1.25rem;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            display: flex;
+            gap: 0.75rem;
+            border: 2px solid #e5e7eb;
+        }
+        
+        .control-btn {
+            padding: 0.875rem 1.5rem;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-family: 'Inter', sans-serif;
+            text-decoration: none;
+        }
+        
+        .btn-export {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: white;
+            box-shadow: 0 4px 6px rgba(59, 130, 246, 0.4);
+        }
+        
+        .btn-export:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 15px rgba(59, 130, 246, 0.5);
+        }
+        
+        .btn-back {
+            background: white;
+            color: #1f2937;
+            border: 2px solid #d1fae5;
+        }
+        
+        .btn-back:hover {
+            background: #f0fdf4;
+            border-color: #10b981;
+            transform: translateY(-2px);
+        }
+        
+        /* Document Container */
+        .document-wrapper {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
         }
         
         /* Header Section */
         .document-header {
             text-align: center;
-            padding: 30px 0;
-            border-bottom: 4px solid #10b981;
-            margin-bottom: 30px;
+            padding: 2.5rem 0;
+            border-bottom: 3px solid #10b981;
+            margin-bottom: 2.5rem;
             position: relative;
         }
         
-        .logo-placeholder {
-            width: 80px;
-            height: 80px;
-            margin: 0 auto 15px;
+        .header-badge {
+            display: inline-block;
+            width: 70px;
+            height: 70px;
+            margin: 0 auto 1.25rem;
             background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            border-radius: 50%;
+            border-radius: 16px;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: white;
-            font-size: 36px;
-            font-weight: bold;
+            box-shadow: 0 8px 20px rgba(16, 185, 129, 0.3);
+        }
+        
+        .header-icon {
+            width: 36px;
+            height: 36px;
+            background: white;
+            border-radius: 8px;
         }
         
         .document-title {
-            font-size: 32px;
-            font-weight: 700;
-            color: #1a202c;
-            margin-bottom: 8px;
+            font-size: 2rem;
+            font-weight: 800;
+            color: #111827;
+            margin-bottom: 0.75rem;
             letter-spacing: -0.5px;
+            text-transform: uppercase;
         }
         
         .document-subtitle {
-            font-size: 20px;
+            font-size: 1.5rem;
             color: #10b981;
-            font-weight: 600;
-            margin-bottom: 5px;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
         }
         
-        .document-date {
-            font-size: 14px;
-            color: #718096;
-            margin-top: 10px;
+        .document-timestamp {
+            font-size: 0.875rem;
+            color: #6b7280;
+            font-weight: 500;
+            margin-top: 1rem;
         }
         
-        /* Metadata Grid */
-        .metadata-section {
+        /* Info Grid */
+        .info-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 20px;
-            margin-bottom: 30px;
+            gap: 1.25rem;
+            margin-bottom: 2.5rem;
             page-break-inside: avoid;
         }
         
-        .metadata-card {
-            background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
-            padding: 20px;
-            border-radius: 8px;
-            border-left: 5px solid #10b981;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        .info-item {
+            background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+            padding: 1.5rem;
+            border-radius: 12px;
+            border-left: 4px solid #10b981;
         }
         
-        .metadata-label {
-            font-size: 11px;
+        .info-label {
+            font-size: 0.75rem;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 1px;
-            color: #718096;
-            margin-bottom: 8px;
-            display: block;
+            color: #6b7280;
+            margin-bottom: 0.5rem;
         }
         
-        .metadata-value {
-            font-size: 18px;
-            font-weight: 600;
-            color: #2d3748;
+        .info-value {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: #1f2937;
         }
         
-        .status-indicator {
+        .status-tag {
             display: inline-block;
-            padding: 6px 16px;
-            border-radius: 20px;
-            font-size: 14px;
+            padding: 0.5rem 1rem;
+            border-radius: 50px;
+            font-size: 0.875rem;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
         
-        .status-active { background: #c6f6d5; color: #22543d; }
-        .status-locked { background: #fed7d7; color: #742a2a; }
-        .status-pending { background: #e2e8f0; color: #4a5568; }
-        .status-paused { background: #feebc8; color: #744210; }
+        .status-active { background: #d1fae5; color: #065f46; }
+        .status-locked { background: #fee2e2; color: #991b1b; }
+        .status-pending { background: #fef3c7; color: #92400e; }
+        .status-paused { background: #dbeafe; color: #1e40af; }
         
-        /* Summary Statistics */
-        .summary-section {
+        /* Summary Box */
+        .summary-box {
             background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
             border: 2px solid #10b981;
-            border-radius: 12px;
-            padding: 25px;
-            margin-bottom: 35px;
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 2.5rem;
             page-break-inside: avoid;
         }
         
-        .summary-title {
-            font-size: 18px;
+        .summary-heading {
+            font-size: 1.125rem;
             font-weight: 700;
             color: #065f46;
-            margin-bottom: 20px;
+            margin-bottom: 1.5rem;
             text-align: center;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 1.5px;
         }
         
-        .summary-grid {
+        .stats-row {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 25px;
+            gap: 1.5rem;
             text-align: center;
         }
         
-        .summary-item {
-            padding: 15px;
+        .stat-box {
+            padding: 1rem;
         }
         
-        .summary-number {
-            font-size: 42px;
+        .stat-value {
+            font-size: 2.5rem;
             font-weight: 800;
             color: #10b981;
             line-height: 1;
-            margin-bottom: 8px;
+            margin-bottom: 0.5rem;
         }
         
-        .summary-label {
-            font-size: 13px;
+        .stat-label {
+            font-size: 0.875rem;
             color: #065f46;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
         
-        /* Position Results */
-        .position-section {
-            margin-bottom: 35px;
+        /* Position Block */
+        .position-block {
+            margin-bottom: 2.5rem;
             page-break-inside: avoid;
-            border: 1px solid #e2e8f0;
-            border-radius: 10px;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
         
-        .position-header {
+        .position-title-bar {
             background: linear-gradient(135deg, #10b981 0%, #059669 100%);
             color: white;
-            padding: 18px 25px;
+            padding: 1.25rem 1.75rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
         
         .position-name {
-            font-size: 22px;
+            font-size: 1.375rem;
             font-weight: 700;
             letter-spacing: -0.3px;
         }
         
-        .position-meta {
-            font-size: 13px;
-            opacity: 0.95;
-            font-weight: 600;
-        }
-        
-        .position-priority {
-            background: rgba(255,255,255,0.25);
-            padding: 6px 14px;
-            border-radius: 15px;
-            font-size: 12px;
+        .position-badge {
+            background: rgba(255, 255, 255, 0.25);
+            padding: 0.5rem 1rem;
+            border-radius: 50px;
+            font-size: 0.75rem;
             font-weight: 700;
-            margin-left: 15px;
         }
         
-        /* Results Table */
-        .results-table {
-            width: 100%;
-            border-collapse: collapse;
+        /* Results List */
+        .results-list {
             background: white;
+            padding: 1.5rem;
         }
         
-        .results-table thead {
-            background: #f7fafc;
+        .result-row {
+            display: flex;
+            align-items: center;
+            padding: 1.25rem;
+            border-bottom: 1px solid #e5e7eb;
+            gap: 1.5rem;
         }
         
-        .results-table th {
-            padding: 14px 16px;
-            text-align: left;
-            font-weight: 700;
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: #4a5568;
-            border-bottom: 2px solid #cbd5e0;
-        }
-        
-        .results-table td {
-            padding: 16px;
-            border-bottom: 1px solid #e2e8f0;
-            font-size: 14px;
-        }
-        
-        .results-table tbody tr:last-child td {
+        .result-row:last-child {
             border-bottom: none;
         }
         
-        .rank-cell {
+        .result-row.winner-row {
+            background: linear-gradient(90deg, #ecfdf5 0%, #d1fae5 100%);
+            border-left: 4px solid #10b981;
+            margin-left: -1.5rem;
+            margin-right: -1.5rem;
+            padding-left: calc(1.25rem + 4px);
+        }
+        
+        .rank-badge {
+            min-width: 50px;
+            text-align: center;
+        }
+        
+        .rank-number {
             font-weight: 800;
-            font-size: 20px;
+            font-size: 1.5rem;
             color: #10b981;
-            width: 60px;
-            text-align: center;
         }
         
-        .candidate-cell {
+        .candidate-details {
+            flex: 1;
+        }
+        
+        .candidate-name-text {
+            font-size: 1rem;
             font-weight: 600;
-            color: #2d3748;
+            color: #1f2937;
+            margin-bottom: 0.25rem;
         }
         
-        .candidate-name {
-            font-size: 15px;
-            margin-bottom: 3px;
+        .candidate-id-text {
+            font-size: 0.875rem;
+            color: #6b7280;
         }
         
-        .candidate-id {
-            font-size: 12px;
-            color: #718096;
+        .vote-display {
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
         }
         
-        .votes-cell {
+        .vote-number {
             font-weight: 700;
-            font-size: 18px;
-            color: #2d3748;
+            font-size: 1.375rem;
+            color: #1f2937;
+            min-width: 60px;
             text-align: center;
-            width: 80px;
         }
         
-        .percentage-cell {
-            width: 140px;
+        .progress-wrapper {
+            width: 180px;
         }
         
-        .percentage-bar {
-            background: #e2e8f0;
-            height: 24px;
-            border-radius: 12px;
+        .progress-track {
+            background: #e5e7eb;
+            height: 20px;
+            border-radius: 10px;
             overflow: hidden;
             position: relative;
         }
         
-        .percentage-fill {
+        .progress-indicator {
             background: linear-gradient(90deg, #10b981 0%, #059669 100%);
             height: 100%;
             display: flex;
@@ -337,125 +400,64 @@ $electedUsers = [];
             justify-content: center;
             color: white;
             font-weight: 700;
-            font-size: 11px;
-            min-width: 40px;
+            font-size: 0.75rem;
+            min-width: 35px;
+            border-radius: 10px;
         }
         
-        .status-cell {
-            text-align: center;
-            width: 100px;
-        }
-        
-        .winner-badge {
+        .winner-indicator {
             background: linear-gradient(135deg, #10b981 0%, #059669 100%);
             color: white;
-            padding: 6px 14px;
-            border-radius: 15px;
+            padding: 0.5rem 1rem;
+            border-radius: 50px;
             font-weight: 700;
-            font-size: 11px;
+            font-size: 0.75rem;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            display: inline-block;
-            box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+            box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
         }
         
-        .winner-row {
-            background: linear-gradient(90deg, #ecfdf5 0%, #d1fae5 100%);
-            border-left: 5px solid #10b981 !important;
-        }
-        
-        .winner-row td {
-            border-bottom-color: #a7f3d0 !important;
-        }
-        
-        .no-candidates-message {
+        .no-results {
             text-align: center;
-            padding: 40px;
-            color: #a0aec0;
+            padding: 3rem;
+            color: #9ca3af;
             font-style: italic;
-            font-size: 15px;
         }
         
-        /* Footer */
+        /* Footer Section */
         .document-footer {
-            margin-top: 50px;
-            padding-top: 25px;
-            border-top: 3px solid #10b981;
+            margin-top: 3rem;
+            padding-top: 2rem;
+            border-top: 2px solid #10b981;
             page-break-inside: avoid;
         }
         
-        .footer-content {
+        .footer-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 20px;
-            margin-bottom: 15px;
+            gap: 1.25rem;
+            margin-bottom: 1.25rem;
         }
         
-        .footer-item {
-            font-size: 13px;
-            color: #4a5568;
+        .footer-detail {
+            font-size: 0.875rem;
+            color: #4b5563;
         }
         
-        .footer-label {
+        .footer-label-text {
             font-weight: 700;
-            color: #2d3748;
-            margin-right: 8px;
+            color: #1f2937;
+            margin-right: 0.5rem;
         }
         
-        .footer-note {
+        .footer-disclaimer {
             text-align: center;
-            font-size: 11px;
-            color: #718096;
-            margin-top: 15px;
-            padding-top: 15px;
-            border-top: 1px solid #e2e8f0;
-        }
-        
-        /* Control Buttons */
-        .control-panel {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            z-index: 1000;
-            display: flex;
-            gap: 10px;
-        }
-        
-        .control-btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .btn-pdf {
-            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-            color: white;
-        }
-        
-        .btn-pdf:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-        }
-        
-        .btn-back {
-            background: #6b7280;
-            color: white;
-        }
-        
-        .btn-back:hover {
-            background: #4b5563;
-            transform: translateY(-2px);
+            font-size: 0.75rem;
+            color: #6b7280;
+            margin-top: 1.25rem;
+            padding-top: 1.25rem;
+            border-top: 1px solid #e5e7eb;
+            line-height: 1.6;
         }
         
         @media print {
@@ -467,11 +469,11 @@ $electedUsers = [];
                 padding: 0;
             }
             
-            .position-section {
+            .position-block {
                 page-break-inside: avoid;
             }
             
-            .summary-section {
+            .summary-box {
                 page-break-inside: avoid;
             }
             
@@ -481,20 +483,30 @@ $electedUsers = [];
         }
         
         @media (max-width: 768px) {
-            .metadata-section,
-            .summary-grid {
-                grid-template-columns: 1fr;
-            }
-            
             .control-panel {
                 position: static;
-                margin-bottom: 20px;
+                margin-bottom: 1.5rem;
                 flex-direction: column;
             }
             
             .control-btn {
                 width: 100%;
                 justify-content: center;
+            }
+            
+            .info-grid,
+            .stats-row,
+            .footer-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .result-row {
+                flex-wrap: wrap;
+            }
+            
+            .vote-display {
+                width: 100%;
+                justify-content: space-between;
             }
         }
     </style>
@@ -503,59 +515,58 @@ $electedUsers = [];
 <body>
     <!-- Control Panel -->
     <div class="control-panel">
-        <button onclick="exportToPDF()" class="control-btn btn-pdf">
-            📥 Export to PDF
+        <button onclick="exportToPDF()" class="control-btn btn-export">
+            Download PDF
         </button>
-        <a href="view_results.php" class="control-btn btn-back" style="text-decoration: none;">
-            ← Back
+        <a href="../views/view_results.php" class="control-btn btn-back">
+            Back to Results
         </a>
     </div>
     
     <!-- Document Content -->
-    <div class="document-content">
+    <div class="document-wrapper" id="pdf-content">
         <!-- Header -->
         <div class="document-header">
-            <div class="logo-placeholder">🗳️</div>
-            <h1 class="document-title">OFFICIAL ELECTION RESULTS</h1>
+            <h1 class="document-title">Official Election Results</h1>
             <div class="document-subtitle"><?php echo htmlspecialchars($sessionName); ?></div>
-            <div class="document-date">
-                Generated on <?php echo date('F d, Y \a\t h:i A'); ?>
+            <div class="document-timestamp">
+                Report Generated: <?php echo date('F d, Y \a\t h:i A'); ?>
             </div>
         </div>
         
-        <!-- Metadata Section -->
-        <div class="metadata-section">
-            <div class="metadata-card">
-                <span class="metadata-label">Session Status</span>
-                <div class="metadata-value">
-                    <span class="status-indicator status-<?php echo $session['status']; ?>">
+        <!-- Info Grid -->
+        <div class="info-grid">
+            <div class="info-item">
+                <div class="info-label">Election Status</div>
+                <div class="info-value">
+                    <span class="status-tag status-<?php echo $session['status']; ?>">
                         <?php echo strtoupper($session['status']); ?>
                     </span>
                 </div>
             </div>
-            <div class="metadata-card">
-                <span class="metadata-label">Session Created</span>
-                <div class="metadata-value">
+            <div class="info-item">
+                <div class="info-label">Election Date</div>
+                <div class="info-value">
                     <?php echo date('F d, Y', strtotime($session['created_at'])); ?>
                 </div>
             </div>
         </div>
         
-        <!-- Summary Statistics -->
-        <div class="summary-section">
-            <div class="summary-title">Election Summary</div>
-            <div class="summary-grid">
-                <div class="summary-item">
-                    <div class="summary-number"><?php echo $totalVotes; ?></div>
-                    <div class="summary-label">Total Votes</div>
+        <!-- Summary Box -->
+        <div class="summary-box">
+            <div class="summary-heading">Election Overview</div>
+            <div class="stats-row">
+                <div class="stat-box">
+                    <div class="stat-value"><?php echo $totalVotes; ?></div>
+                    <div class="stat-label">Total Votes</div>
                 </div>
-                <div class="summary-item">
-                    <div class="summary-number"><?php echo $uniqueVoters; ?></div>
-                    <div class="summary-label">Students Voted</div>
+                <div class="stat-box">
+                    <div class="stat-value"><?php echo $uniqueVoters; ?></div>
+                    <div class="stat-label">Participants</div>
                 </div>
-                <div class="summary-item">
-                    <div class="summary-number"><?php echo $positions->num_rows; ?></div>
-                    <div class="summary-label">Positions</div>
+                <div class="stat-box">
+                    <div class="stat-value"><?php echo $positions->num_rows; ?></div>
+                    <div class="stat-label">Positions</div>
                 </div>
             </div>
         </div>
@@ -643,83 +654,61 @@ $electedUsers = [];
             }
         ?>
         
-        <div class="position-section">
-            <div class="position-header">
-                <div>
-                    <div class="position-name"><?php echo htmlspecialchars($positionName); ?></div>
-                    <div class="position-meta">Total Votes: <?php echo $positionTotalVotes; ?></div>
-                </div>
-                <div class="position-priority">Priority #<?php echo $position['position_order']; ?></div>
+        <div class="position-block">
+            <div class="position-title-bar">
+                <div class="position-name"><?php echo htmlspecialchars($positionName); ?></div>
+                <div class="position-badge">Priority <?php echo $position['position_order']; ?></div>
             </div>
             
-            <table class="results-table">
-                <thead>
-                    <tr>
-                        <th>Rank</th>
-                        <th>Candidate</th>
-                        <th>Votes</th>
-                        <th>Percentage</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (count($tempResults) > 0):
-                        $rank = 1;
-                        $prevVotes = -1;
-                        $actualRank = 1;
-                        
-                        foreach ($tempResults as $result):
-                            if ($result['vote_count'] != $prevVotes) {
-                                $actualRank = $rank;
-                            }
-                            
-                            $isWinner = ($winner && isset($result['user_id']) && isset($winner['user_id']) && $winner['user_id'] === $result['user_id']);
-                            $percentage = $positionTotalVotes > 0 ? ($result['vote_count'] / $positionTotalVotes * 100) : 0;
-                    ?>
-                        <tr class="<?php echo $isWinner ? 'winner-row' : ''; ?>">
-                            <td class="rank-cell">#<?php echo $actualRank; ?></td>
-                            <td class="candidate-cell">
-                                <div class="candidate-name">
-                                    <?php 
-                                    if ($result['full_name']) {
-                                        echo htmlspecialchars($result['full_name']); 
-                                    } else {
-                                        echo '<span style="color: #a0aec0;">Candidate (data removed)</span>';
-                                    }
-                                    ?>
-                                </div>
-                                <?php if (isset($result['student_id']) && $result['student_id']): ?>
-                                    <div class="candidate-id"><?php echo htmlspecialchars($result['student_id']); ?></div>
-                                <?php endif; ?>
-                            </td>
-                            <td class="votes-cell"><?php echo $result['vote_count']; ?></td>
-                            <td class="percentage-cell">
-                                <div class="percentage-bar">
-                                    <div class="percentage-fill" style="width: <?php echo $percentage; ?>%">
-                                        <?php echo number_format($percentage, 1); ?>%
+            <div class="results-list">
+                <?php if (count($tempResults) > 0):
+                    $rank = 1;
+                    foreach ($tempResults as $result):
+                        $isWinner = ($winner && isset($result['user_id']) && isset($winner['user_id']) && $winner['user_id'] === $result['user_id']);
+                        $percentage = $positionTotalVotes > 0 ? ($result['vote_count'] / $positionTotalVotes * 100) : 0;
+                ?>
+                    <div class="result-row <?php echo $isWinner ? 'winner-row' : ''; ?>">
+                        <div class="rank-badge">
+                            <div class="rank-number"><?php echo $rank; ?></div>
+                        </div>
+                        <div class="candidate-details">
+                            <div class="candidate-name-text">
+                                <?php 
+                                if ($result['full_name']) {
+                                    echo htmlspecialchars($result['full_name']); 
+                                } else {
+                                    echo '<span style="color: #9ca3af;">Candidate (data removed)</span>';
+                                }
+                                ?>
+                            </div>
+                            <?php if (isset($result['student_id']) && $result['student_id']): ?>
+                                <div class="candidate-id-text">ID: <?php echo htmlspecialchars($result['student_id']); ?></div>
+                            <?php endif; ?>
+                        </div>
+                        <div class="vote-display">
+                            <div class="vote-number"><?php echo $result['vote_count']; ?></div>
+                            <div class="progress-wrapper">
+                                <div class="progress-track">
+                                    <div class="progress-indicator" style="width: <?php echo $percentage; ?>%">
+                                        <?php echo round($percentage); ?>%
                                     </div>
                                 </div>
-                            </td>
-                            <td class="status-cell">
-                                <?php if ($isWinner): ?>
-                                    <span class="winner-badge">🏆 Winner</span>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                    <?php
-                            $prevVotes = $result['vote_count'];
-                            $rank++;
-                        endforeach;
-                    else:
-                    ?>
-                        <tr>
-                            <td colspan="5" class="no-candidates-message">
-                                No candidates nominated for this position
-                            </td>
-                        </tr>
-                    <?php endif; ?>
-                </tbody>
-            </table>
+                            </div>
+                            <?php if ($isWinner): ?>
+                                <div class="winner-indicator">Winner</div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                <?php
+                        $rank++;
+                    endforeach;
+                else:
+                ?>
+                    <div class="no-results">
+                        No candidates nominated for this position
+                    </div>
+                <?php endif; ?>
+            </div>
         </div>
         
         <?php
@@ -729,19 +718,19 @@ $electedUsers = [];
         
         <!-- Footer -->
         <div class="document-footer">
-            <div class="footer-content">
-                <div class="footer-item">
-                    <span class="footer-label">Generated:</span>
-                    <?php echo date('F d, Y \a\t h:i A'); ?>
+            <div class="footer-grid">
+                <div class="footer-detail">
+                    <span class="footer-label-text">Report Date:</span>
+                    <?php echo date('F d, Y'); ?>
                 </div>
-                <div class="footer-item">
-                    <span class="footer-label">Generated By:</span>
+                <div class="footer-detail">
+                    <span class="footer-label-text">Generated By:</span>
                     <?php echo htmlspecialchars($_SESSION['full_name']); ?>
                 </div>
             </div>
-            <div class="footer-note">
-                This is an official document from the Classroom Voting System<br>
-                All results are final and verified
+            <div class="footer-disclaimer">
+                VoteSystem Pro - Official Election Results Document<br>
+                This report contains verified and finalized election results
             </div>
         </div>
     </div>
@@ -750,17 +739,16 @@ $electedUsers = [];
     
     <script>
         function exportToPDF() {
-            // Hide control panel
             const controlPanel = document.querySelector('.control-panel');
             controlPanel.style.display = 'none';
             
-            const element = document.querySelector('.document-content');
+            const element = document.getElementById('pdf-content');
             const sessionName = '<?php echo addslashes($sessionName); ?>';
             const timestamp = new Date().toISOString().slice(0, 10);
             const filename = `Election_Results_${sessionName.replace(/[^a-zA-Z0-9]/g, '_')}_${timestamp}.pdf`;
             
             const opt = {
-                margin: [10, 10, 10, 10],
+                margin: [12, 12, 12, 12],
                 filename: filename,
                 image: { type: 'jpeg', quality: 0.98 },
                 html2canvas: { 
@@ -778,7 +766,6 @@ $electedUsers = [];
             };
             
             html2pdf().set(opt).from(element).save().then(function() {
-                // Show control panel again
                 controlPanel.style.display = 'flex';
             });
         }

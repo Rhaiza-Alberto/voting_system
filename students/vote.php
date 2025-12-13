@@ -103,11 +103,11 @@ if (!$currentPositionId) {
     
     // Get candidates for current position with computed full_name (3NF compliant)
     $candidatesQuery = "SELECT c.id, c.user_id, c.status, 
-                        u.first_name, u.middle_name, u.last_name, u.student_id 
-                        FROM candidates c 
-                        JOIN users u ON c.user_id = u.id 
-                        WHERE c.position_id = ?
-                        ORDER BY u.last_name, u.first_name";
+                    u.first_name, u.middle_name, u.last_name, u.student_id 
+                    FROM candidates c 
+                    JOIN users u ON c.user_id = u.id 
+                    WHERE c.position_id = ? AND c.deleted_at IS NULL AND u.deleted_at IS NULL";
+
     $stmt = $conn->prepare($candidatesQuery);
     $stmt->bind_param("i", $currentPositionId);
     $stmt->execute();
@@ -133,7 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['candidate_id']) && is
         $debugInfo[] = "Error: Position mismatch";
     } else {
         // CRITICAL CHECK: Verify user hasn't already voted for this position
-        $voteCheckQuery = "SELECT id FROM votes WHERE session_id = ? AND voter_id = ? AND position_id = ?";
+        $voteCheckQuery = "SELECT id FROM votes WHERE session_id = ? AND voter_id = ? AND position_id = ? AND deleted_at IS NULL";
         $stmt = $conn->prepare($voteCheckQuery);
         $stmt->bind_param("iii", $sessionId, $userId, $positionId);
         $stmt->execute();
@@ -146,7 +146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['candidate_id']) && is
             $debugInfo[] = "Error: Duplicate vote attempt blocked";
         } else {
             // Verify the candidate exists and is for the correct position
-            $candidateCheckQuery = "SELECT id FROM candidates WHERE id = ? AND position_id = ?";
+            $candidateCheckQuery = "SELECT id FROM candidates WHERE id = ? AND position_id = ? AND deleted_at IS NULL"; 
             $stmt = $conn->prepare($candidateCheckQuery);
             $stmt->bind_param("ii", $candidateId, $positionId);
             $stmt->execute();

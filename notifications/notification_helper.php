@@ -68,11 +68,15 @@ class NotificationHelper {
     }
     
     /**
-     * Notify admin of new vote
+     * Notify admin of new vote (anonymous)
      */
-    public function notifyAdminNewVote($adminId, $voterName, $positionName) {
+    public function notifyAdminNewVote($adminId, $positionName, $sessionName = '') {
         $title = "New Vote Cast";
-        $message = $voterName . " has voted for " . $positionName;
+        if ($sessionName) {
+            $message = "A vote has been recorded for " . $positionName . " in " . $sessionName;
+        } else {
+            $message = "A vote has been recorded for " . $positionName;
+        }
         return $this->sendNotification($adminId, $title, $message, 'vote');
     }
     
@@ -90,8 +94,26 @@ class NotificationHelper {
      */
     public function notifyAdminFullTurnout($adminId, $sessionName, $positionName) {
         $title = "🎉 Full Turnout Achieved!";
-        $message = "All students have voted for " . $positionName . " in " . $sessionName;
+        $message = "All eligible voters have cast their votes for " . $positionName . " in " . $sessionName;
         return $this->sendNotification($adminId, $title, $message, 'milestone');
+    }
+    
+    /**
+     * Notify admin when voting session starts
+     */
+    public function notifyAdminSessionStart($adminId, $sessionName) {
+        $title = "Voting Session Started";
+        $message = "The voting session '" . $sessionName . "' has been opened for voting";
+        return $this->sendNotification($adminId, $title, $message, 'system');
+    }
+    
+    /**
+     * Notify admin when voting session ends
+     */
+    public function notifyAdminSessionEnd($adminId, $sessionName) {
+        $title = "Voting Session Ended";
+        $message = "The voting session '" . $sessionName . "' has been closed";
+        return $this->sendNotification($adminId, $title, $message, 'system');
     }
     
     /**

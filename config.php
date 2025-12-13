@@ -156,4 +156,74 @@ function updateSessionUserInfo() {
         }
     }
 }
+
+/**
+ * Soft delete a record from any table
+ * 
+ * @param mysqli $conn Database connection
+ * @param string $table Table name
+ * @param int $id Record ID
+ * @param int $deletedBy User ID who is deleting
+ * @return bool Success status
+ */
+function softDelete($conn, $table, $id, $deletedBy) {
+    $allowedTables = ['users', 'candidates', 'voting_sessions', 'votes', 'winners', 
+                      'positions', 'student_groups', 'student_group_members', 
+                      'notifications', 'vote_logs', 'email_verification_logs'];
+    
+    if (!in_array($table, $allowedTables)) {
+        return false;
+    }
+    
+    $stmt = $conn->prepare("UPDATE $table SET deleted_at = NOW(), deleted_by = ? WHERE id = ?");
+    $stmt->bind_param("ii", $deletedBy, $id);
+    $result = $stmt->execute();
+    $stmt->close();
+    
+    return $result;
+}
+
+/**
+ * Restore a soft-deleted record
+ * 
+ * @param mysqli $conn Database connection
+ * @param string $table Table name
+ * @param int $id Record ID
+ * @return bool Success status
+ */
+function restoreRecord($conn, $table, $id) {
+    $allowedTables = ['users', 'candidates', 'voting_sessions', 'votes', 'winners', 
+                      'positions', 'student_groups', 'student_group_members', 
+                      'notifications', 'vote_logs', 'email_verification_logs'];
+    
+    if (!in_array($table, $allowedTables)) {
+        return false;
+    }
+    
+    $stmt = $conn->prepare("UPDATE $table SET deleted_at = NULL, deleted_by = NULL WHERE id = ?");
+    $stmt->bind_param("i", $id);
+    $result = $stmt->execute();
+    $stmt->close();
+    
+    return $result;
+}
+
+/**
+ * Check if a record is soft deleted
+ * 
+ * @param mysqli $conn Database connection
+ * @param string $table Table name
+ * @param int $id Record ID
+ * @return bool True if deleted, false otherwise
+ */
+function isDeleted($conn, $table, $id) {
+    $stmt = $conn->prepare("SELECT deleted_at FROM $table WHERE id = ?");
+    $stmt->bind_param("i", $id);
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    
+    return ($result && $result['deleted_at'] !== null);
+}
+
 ?>

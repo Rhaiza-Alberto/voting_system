@@ -20,7 +20,7 @@ class VerificationHelper {
     }
     
     /**
-     * Send verification email
+     * Send verification email with modern design
      */
     public function sendVerificationEmail($email, $fullName, $token) {
         $verificationLink = $this->getVerificationLink($token);
@@ -50,71 +50,7 @@ class VerificationHelper {
             $mail->CharSet = 'UTF-8';
             $mail->Subject = "Verify Your WMSU Voting System Account";
             
-            $mail->Body = "
-            <html>
-            <head>
-                <style>
-                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                    .header { background: linear-gradient(135deg, #10b981 0%, #059669 100%); 
-                             color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-                    .content { background: #f7fafc; padding: 30px; border: 1px solid #e2e8f0; }
-                    .button { display: inline-block; padding: 15px 30px; background: #10b981; 
-                             color: white; text-decoration: none; border-radius: 8px; 
-                             font-weight: bold; margin: 20px 0; }
-                    .footer { background: #e2e8f0; padding: 20px; text-align: center; 
-                             font-size: 12px; color: #666; border-radius: 0 0 10px 10px; }
-                    .warning { background: #fef3c7; border-left: 4px solid #f59e0b; 
-                              padding: 15px; margin: 20px 0; }
-                </style>
-            </head>
-            <body>
-                <div class='container'>
-                    <div class='header'>
-                        <h1>WMSU Voting System</h1>
-                        <p>Email Verification Required</p>
-                    </div>
-                    
-                    <div class='content'>
-                        <h2>Hello, " . htmlspecialchars($fullName) . "!</h2>
-                        
-                        <p>Thank you for registering with the WMSU Classroom Voting System. 
-                        To complete your registration and activate your account, please verify 
-                        your email address by clicking the button below:</p>
-                        
-                        <center>
-                            <a href='" . htmlspecialchars($verificationLink) . "' class='button'>
-                                Verify My Email Address
-                            </a>
-                        </center>
-                        
-                        <p>Or copy and paste this link into your browser:</p>
-                        <p style='background: #fff; padding: 10px; border: 1px solid #ddd; 
-                                  word-break: break-all; font-size: 12px;'>
-                            " . htmlspecialchars($verificationLink) . "
-                        </p>
-                        
-                        <div class='warning'>
-                            <strong>Important:</strong> This verification link will expire in 24 hours. 
-                            If you did not create an account, please ignore this email.
-                        </div>
-                        
-                        <p><strong>What happens next?</strong></p>
-                        <ul>
-                            <li>Click the verification link above</li>
-                            <li>Your account will be activated</li>
-                            <li>You can then log in and participate in voting</li>
-                        </ul>
-                    </div>
-                    
-                    <div class='footer'>
-                        <p>This is an automated message from WMSU Classroom Voting System.</p>
-                        <p>If you need assistance, please contact your system administrator.</p>
-                    </div>
-                </div>
-            </body>
-            </html>
-            ";
+            $mail->Body = $this->getEmailTemplate($fullName, $verificationLink);
             
             $mail->send();
             return true;
@@ -122,6 +58,232 @@ class VerificationHelper {
             error_log("Verification email error: " . $e->getMessage());
             return false;
         }
+    }
+    
+    /**
+     * Generate modern email template
+     */
+    private function getEmailTemplate($fullName, $verificationLink) {
+        return "
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <link href='https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap' rel='stylesheet'>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f3f4f6;
+        }
+        
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+        }
+        
+        .email-header {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+        }
+        
+        .email-logo {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        
+        .email-header h1 {
+            margin: 0 0 8px 0;
+            font-size: 28px;
+            font-weight: 700;
+        }
+        
+        .email-header p {
+            margin: 0;
+            font-size: 16px;
+            opacity: 0.95;
+            font-weight: 500;
+        }
+        
+        .email-content {
+            padding: 40px 30px;
+            background: white;
+        }
+        
+        .email-content h2 {
+            margin: 0 0 20px 0;
+            font-size: 24px;
+            color: #1f2937;
+            font-weight: 600;
+        }
+        
+        .email-content p {
+            margin: 0 0 16px 0;
+            line-height: 1.6;
+            color: #4b5563;
+            font-size: 15px;
+        }
+        
+        .verify-button {
+            display: inline-block;
+            padding: 16px 40px;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white !important;
+            text-decoration: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 16px;
+            margin: 30px 0;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+        
+        .link-box {
+            background: #f3f4f6;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+            word-break: break-all;
+            font-size: 13px;
+            color: #6b7280;
+            font-family: 'Courier New', monospace;
+            margin: 20px 0;
+        }
+        
+        .warning-box {
+            background: linear-gradient(90deg, #fef3c7 0%, #fde68a 100%);
+            border-left: 4px solid #f59e0b;
+            padding: 20px;
+            margin: 25px 0;
+            border-radius: 8px;
+        }
+        
+        .warning-box strong {
+            color: #92400e;
+            font-size: 16px;
+            display: block;
+            margin-bottom: 8px;
+        }
+        
+        .warning-box p {
+            color: #78350f;
+            margin: 0;
+        }
+        
+        .steps-section {
+            background: #f9fafb;
+            padding: 25px;
+            border-radius: 10px;
+            margin: 25px 0;
+        }
+        
+        .steps-section h3 {
+            margin: 0 0 15px 0;
+            color: #1f2937;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .steps-list {
+            margin: 0;
+            padding-left: 20px;
+            color: #4b5563;
+        }
+        
+        .steps-list li {
+            margin-bottom: 10px;
+            line-height: 1.6;
+        }
+        
+        .email-footer {
+            background: #1f2937;
+            color: #9ca3af;
+            padding: 30px;
+            text-align: center;
+            font-size: 13px;
+        }
+        
+        .email-footer p {
+            margin: 0 0 8px 0;
+        }
+        
+        .divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
+            margin: 30px 0;
+        }
+        
+        .center {
+            text-align: center;
+        }
+        
+        .stats-badge {
+            display: inline-block;
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            margin: 10px 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class='email-container'>
+        <div class='email-header'>
+            <div class='email-logo'>🗳️</div>
+            <h1>VoteSystem Pro</h1>
+            <p>Email Verification Required</p>
+        </div>
+        
+        <div class='email-content'>
+            <h2>Hello, " . htmlspecialchars($fullName) . "! 👋</h2>
+            
+            <p>Thank you for registering with the <strong>WMSU Classroom Voting System</strong>. We're excited to have you join our democratic community!</p>
+            
+            <p>To complete your registration and activate your account, please verify your email address by clicking the button below:</p>
+            
+            <div class='center'>
+                <a href='" . htmlspecialchars($verificationLink) . "' class='verify-button'>✓ Verify My Email Address</a>
+            </div>
+            
+            <div class='divider'></div>
+            
+            <p style='font-size: 14px; color: #6b7280;'><strong>Alternative method:</strong> Copy and paste this link into your browser:</p>
+            <div class='link-box'>" . htmlspecialchars($verificationLink) . "</div>
+            
+            <div class='warning-box'>
+                <strong>⏰ Important Notice</strong>
+                <p>This verification link will expire in <strong>24 hours</strong>. If you did not create an account, please ignore this email.</p>
+            </div>
+            
+            <div class='steps-section'>
+                <h3>📋 What happens next?</h3>
+                <ul class='steps-list'>
+                    <li><strong>Step 1:</strong> Click the verification link above</li>
+                    <li><strong>Step 2:</strong> Your account will be activated immediately</li>
+                    <li><strong>Step 3:</strong> Log in and participate in voting sessions</li>
+                    <li><strong>Step 4:</strong> Exercise your democratic right!</li>
+                </ul>
+            </div>
+            
+        </div>
+        
+        <div class='email-footer'>
+            <p><strong>WMSU Classroom Voting System</strong></p>
+            <p>This is an automated message. Please do not reply to this email.</p>
+            <p>If you need assistance, please contact your system administrator.</p>
+            <p style='margin-top: 15px; opacity: 0.7;'>© 2024 Western Mindanao State University. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>
+        ";
     }
     
     /**

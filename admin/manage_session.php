@@ -216,27 +216,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 break;
                 
             case 'lock':
-                // ========================================
-                // CRITICAL FIX: PRESERVE VOTES!
-                // ========================================
-                // DO NOT DELETE CANDIDATES HERE!
-                // Deleting candidates triggers CASCADE DELETE on votes
-                // This destroys all vote history for audit logs
-                
-                // Just lock the session
-                $stmt = $conn->prepare("UPDATE voting_sessions SET status = 'locked', current_position_id = NULL WHERE id = ?");
-                $stmt->bind_param("i", $sessionId);
-                $lockSuccess = $stmt->execute();
-                $stmt->close();
-                
-                if ($lockSuccess) {
-                    $message = ' Session locked successfully! All votes and winners are permanently saved in the database for audit logs. You can now create a new session.';
-                    $messageType = 'success';
-                } else {
-                    $message = ' Failed to lock session.';
-                    $messageType = 'error';
-                }
-                break;
+            // Lock the session without deleting anything
+            // All votes, candidates, and winners are preserved
+            $stmt = $conn->prepare("UPDATE voting_sessions SET status = 'locked', current_position_id = NULL, locked_at = NOW() WHERE id = ?");
+             $stmt->bind_param("i", $sessionId);
+            $lockSuccess = $stmt->execute();
+            $stmt->close();
+            if ($lockSuccess) {
+            $message = '🔒 Session locked successfully! All votes and winners are permanently saved in the database for audit logs. You can now create a new session.';
+            $messageType = 'success';
+            } else {
+            $message = '⛔ Failed to lock session.';
+            $messageType = 'error';
+            }
+            break;
         }
     }
 }
@@ -283,7 +276,7 @@ while ($row = $completedResult->fetch_assoc()) {
 }
 
 // Get vote statistics
-$totalVotersQuery = "SELECT COUNT(DISTINCT voter_id) as count FROM votes WHERE session_id = ?";
+$totalVotersQuery = "SELECT COUNT(DISTINCT voter_id) as count FROM votes WHERE session_id = ? AND deleted_at IS NULL";
 $stmt = $conn->prepare($totalVotersQuery);
 $stmt->bind_param("i", $sessionId);
 $stmt->execute();
@@ -293,7 +286,7 @@ $stmt->close();
 $totalStudents = $conn->query("SELECT COUNT(*) as count FROM users WHERE role = 'student'")->fetch_assoc()['count'];
 
 // Get total votes cast
-$totalVotesQuery = "SELECT COUNT(*) as count FROM votes WHERE session_id = ?";
+$totalVotesQuery = "SELECT COUNT(*) as count FROM votes WHERE session_id = ? AND deleted_at IS NULL";
 $stmt = $conn->prepare($totalVotesQuery);
 $stmt->bind_param("i", $sessionId);
 $stmt->execute();
