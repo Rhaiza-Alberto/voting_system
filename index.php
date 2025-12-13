@@ -16,7 +16,7 @@ if (isLoggedIn()) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Classroom Voting System</title>
+    <title>WMSU Classroom Voting System</title>
     <style>
         * {
             margin: 0;
@@ -58,7 +58,7 @@ if (isLoggedIn()) {
         
         .button-group {
             display: flex;
-            gap: 20px;
+            gap: 15px;
             flex-direction: column;
         }
         
@@ -85,9 +85,29 @@ if (isLoggedIn()) {
             box-shadow: 0 5px 15px rgba(16, 185, 129, 0.4);
         }
         
+        .btn-secondary {
+            background: #3b82f6;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #2563eb;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(59, 130, 246, 0.4);
+        }
+        
         .icon {
             font-size: 4em;
             margin-bottom: 20px;
+        }
+        
+        .info-text {
+            background: #dbeafe;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            font-size: 0.95em;
+            color: #1e40af;
         }
         
         @media (max-width: 600px) {
@@ -103,11 +123,18 @@ if (isLoggedIn()) {
 </head>
 <body>
     <div class="container">
-        <h1>Classroom Voting System</h1>
+        <div class="icon">🗳️</div>
+        <h1>WMSU Voting System</h1>
         <p class="subtitle">Secure, Real-Time Student Elections</p>
         
+        <div class="info-text">
+            <strong>🎓 For WMSU Students:</strong> Register with your official WMSU email (@wmsu.edu.ph) 
+            to participate in voting sessions.
+        </div>
+        
         <div class="button-group">
-            <a href="login.php" class="btn btn-primary">Login to Vote</a>
+            <a href="login.php" class="btn btn-primary">🔑 Login to Vote</a>
+            <a href="register.php" class="btn btn-secondary">📝 Register New Account</a>
         </div>
     </div>
 </body>

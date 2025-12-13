@@ -19,7 +19,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $conn = getDBConnection();
         
         // Get user with computed full name
-        $stmt = $conn->prepare("SELECT id, student_id, first_name, middle_name, last_name, role, password 
+        $stmt = $conn->prepare("SELECT id, student_id, first_name, middle_name, last_name, 
+                               email, role, password, email_verified, is_active 
                                FROM users WHERE student_id = ?");
         $stmt->bind_param("s", $studentId);
         $stmt->execute();
@@ -30,22 +31,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             // Verify password
             if (password_verify($password, $user['password'])) {
-                // Compute full name
-                $fullName = formatStudentName($user['first_name'], $user['middle_name'], $user['last_name']);
-                
-                // Set session variables
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['student_id'] = $user['student_id'];
-                $_SESSION['full_name'] = $fullName;
-                $_SESSION['role'] = $user['role'];
-                
-                // Redirect based on role
-                if ($user['role'] === 'admin') {
-                    header('Location: admin/admin_dashboard.php');
-                } else {
-                    header('Location: students/student_dashboard.php');
+                // Check if account is active
+                if ($user['is_active'] == 0) {
+                    $error = 'Your account has been deactivated. Please contact the administrator.';
                 }
-                exit();
+                // Check if email is verified (only for self-registered students)
+                elseif ($user['email_verified'] == 0 && $user['role'] !== 'admin') {
+                    $error = 'Your email has not been verified yet. Please check your WMSU email (' . 
+                             htmlspecialchars($user['email']) . ') for the verification link.';
+                } else {
+                    // Compute full name
+                    $fullName = formatStudentName($user['first_name'], $user['middle_name'], $user['last_name']);
+                    
+                    // Set session variables
+                    $_SESSION['user_id'] = $user['id'];
+                    $_SESSION['student_id'] = $user['student_id'];
+                    $_SESSION['full_name'] = $fullName;
+                    $_SESSION['role'] = $user['role'];
+                    
+                    // Redirect based on role
+                    if ($user['role'] === 'admin') {
+                        header('Location: admin/admin_dashboard.php');
+                    } else {
+                        header('Location: students/student_dashboard.php');
+                    }
+                    exit();
+                }
             } else {
                 $error = 'Invalid Student ID or Password';
             }
@@ -66,6 +77,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <title>Login - Voting System</title>
+    <style>
+        .register-link {
+            text-align: center;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+        }
+        .register-link a {
+            color: #10b981;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .register-link a:hover {
+            text-decoration: underline;
+        }
+    </style>
 </head>
 <body class="login-page">
     <div class="login-container">
@@ -89,6 +116,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             <button type="submit" class="btn">Login</button>
         </form>
+        
+        <div class="register-link">
+            <p>Don't have an account? <a href="register.php">Register with WMSU Email</a></p>
+        </div>
     </div>
 </body>
 </html>
