@@ -2,6 +2,18 @@
 require_once '../config.php';
 requireAdmin();
 
+// Initialize notification helper if available
+$notificationHelper = null;
+$unreadCount = 0;
+$recentNotifications = [];
+
+if (file_exists('../notifications/notification_helper.php')) {
+    require_once '../notifications/notification_helper.php';
+    $notificationHelper = new NotificationHelper();
+    $unreadCount = $notificationHelper->getUnreadCount($_SESSION['user_id']);
+    $recentNotifications = $notificationHelper->getNotifications($_SESSION['user_id'], 5);
+}
+
 $conn = getDBConnection();
 
 // Get statistics
@@ -91,7 +103,7 @@ $conn->close();
         .user-section {
             display: flex;
             align-items: center;
-            gap: 1.5rem;
+            gap: 1rem;
         }
 
         .user-info {
@@ -114,6 +126,233 @@ $conn->close();
             justify-content: center;
             color: white;
             font-weight: 600;
+        }
+
+        /* Notification Bell Styles */
+        .notification-bell-container {
+            position: relative;
+            display: inline-block;
+        }
+        
+        /* Add invisible bridge between button and dropdown */
+        .notification-bell-container::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            height: 10px;
+            background: transparent;
+        }
+        
+        .notification-bell-button {
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 0.65rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: #374151;
+            transition: all 0.3s;
+            font-size: 1.25rem;
+            width: 44px;
+            height: 44px;
+            position: relative;
+            z-index: 1001;
+        }
+        
+        .notification-bell-button:hover {
+            background: #f9fafb;
+            border-color: #10b981;
+            color: #10b981;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+        }
+        
+        .notification-bell-button svg {
+            width: 20px;
+            height: 20px;
+        }
+        
+        .notification-count-badge {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #ef4444;
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 0.25rem 0.5rem;
+            border-radius: 9999px;
+            min-width: 20px;
+            text-align: center;
+            animation: pulse 2s infinite;
+            z-index: 1002;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+        
+        .notification-dropdown {
+            position: absolute;
+            top: calc(100% + 10px);
+            right: 0;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+            width: 380px;
+            max-height: 600px;
+            overflow: hidden;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: opacity 0.2s, visibility 0.2s, transform 0.2s;
+            z-index: 1000;
+        }
+        
+        .notification-bell-container:hover .notification-dropdown,
+        .notification-dropdown:hover {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+            transition-delay: 0s;
+        }
+        
+        .notification-bell-container .notification-dropdown {
+            transition-delay: 0.1s;
+        }
+        
+        .notification-dropdown-header {
+            padding: 1.25rem;
+            border-bottom: 2px solid #f3f4f6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+        }
+        
+        .notification-dropdown-header h3 {
+            margin: 0;
+            font-size: 1.125rem;
+            font-weight: 700;
+        }
+        
+        .notification-unread-count {
+            background: rgba(255,255,255,0.2);
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+        
+        .mark-all-read-btn {
+            background: white;
+            color: #10b981;
+            border: none;
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .mark-all-read-btn:hover {
+            background: #f0fdf4;
+        }
+        
+        .notification-dropdown-body {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .notification-item {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid #f3f4f6;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .notification-item:hover {
+            background: #f9fafb;
+        }
+        
+        .notification-item.unread {
+            background: #f0fdf4;
+            border-left: 4px solid #10b981;
+        }
+        
+        .notification-item-header {
+            display: flex;
+            gap: 0.75rem;
+        }
+        
+        .notification-icon {
+            font-size: 1rem;
+            flex-shrink: 0;
+            font-weight: 700;
+            color: #6b7280;
+        }
+        
+        .notification-item-content {
+            flex: 1;
+        }
+        
+        .notification-item-title {
+            font-weight: 600;
+            color: #111827;
+            margin-bottom: 0.25rem;
+            font-size: 0.95rem;
+        }
+        
+        .notification-item-message {
+            color: #6b7280;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            margin-bottom: 0.5rem;
+        }
+        
+        .notification-item-time {
+            color: #9ca3af;
+            font-size: 0.75rem;
+        }
+        
+        .notification-empty {
+            text-align: center;
+            padding: 3rem 2rem;
+            color: #9ca3af;
+        }
+        
+        .notification-empty-icon {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+            color: #d1d5db;
+        }
+        
+        .notification-dropdown-footer {
+            padding: 1rem 1.25rem;
+            border-top: 2px solid #f3f4f6;
+            text-align: center;
+            background: #f9fafb;
+        }
+        
+        .notification-dropdown-footer a {
+            color: #10b981;
+            font-weight: 600;
+            text-decoration: none;
+            font-size: 0.95rem;
+            transition: color 0.2s;
+        }
+        
+        .notification-dropdown-footer a:hover {
+            color: #059669;
         }
 
         .modern-container {
@@ -564,6 +803,10 @@ $conn->close();
                 width: 100%;
                 justify-content: center;
             }
+            
+            .notification-dropdown {
+                width: 320px;
+            }
         }
     </style>
 </head>
@@ -586,11 +829,85 @@ $conn->close();
                         <?php echo htmlspecialchars($_SESSION['full_name']); ?>
                     </span>
                 </div>
-                <?php 
-                if (file_exists('../notification_widget.php')) {
-                    include '../notification_widget.php'; 
-                }
-                ?>
+                
+                <!-- Notification Bell Widget -->
+                <div class="notification-bell-container">
+                    <button class="notification-bell-button" onclick="window.location.href='../notifications/notifications.php'">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                        </svg>
+                    </button>
+                    
+                    <?php if ($unreadCount > 0): ?>
+                        <span class="notification-count-badge">
+                            <?php echo $unreadCount > 99 ? '99+' : $unreadCount; ?>
+                        </span>
+                    <?php endif; ?>
+                    
+                    <div class="notification-dropdown">
+                        <div class="notification-dropdown-header">
+                            <h3>Notifications</h3>
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <?php if ($unreadCount > 0): ?>
+                                    <span class="notification-unread-count"><?php echo $unreadCount; ?> new</span>
+                                    <button class="mark-all-read-btn" onclick="event.stopPropagation(); window.location.href='../notifications/notifications.php?mark_all_read=1'">
+                                        Mark all read
+                                    </button>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        
+                        <div class="notification-dropdown-body">
+                            <?php if (count($recentNotifications) > 0): ?>
+                                <?php foreach ($recentNotifications as $notif): ?>
+                                    <div class="notification-item <?php echo $notif['is_read'] ? '' : 'unread'; ?>"
+                                         onclick="window.location.href='../notifications/notifications.php?mark_read=<?php echo $notif['id']; ?>'">
+                                        <div class="notification-item-header">
+                                            <span class="notification-icon">
+                                                <?php
+                                                if ($notif['type'] == 'vote') echo '[V]';
+                                                elseif ($notif['type'] == 'milestone') echo '[M]';
+                                                else echo '[S]';
+                                                ?>
+                                            </span>
+                                            <div class="notification-item-content">
+                                                <div class="notification-item-title">
+                                                    <?php echo htmlspecialchars($notif['title']); ?>
+                                                </div>
+                                                <div class="notification-item-message">
+                                                    <?php echo htmlspecialchars($notif['message']); ?>
+                                                </div>
+                                                <div class="notification-item-time">
+                                                    <?php
+                                                    $time = strtotime($notif['created_at']);
+                                                    $diff = time() - $time;
+                                                    
+                                                    if ($diff < 60) echo "Just now";
+                                                    elseif ($diff < 3600) echo floor($diff / 60) . "m ago";
+                                                    elseif ($diff < 86400) echo floor($diff / 3600) . "h ago";
+                                                    else echo date('M d, Y', $time);
+                                                    ?>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <div class="notification-empty">
+                                    <p style="font-weight: 600; color: #6b7280; margin-bottom: 0.5rem;">No notifications yet</p>
+                                    <p style="font-size: 0.875rem;">
+                                        You'll see updates here when students vote
+                                    </p>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                        
+                        <div class="notification-dropdown-footer">
+                            <a href="../notifications/notifications.php" onclick="event.stopPropagation();">View All Notifications</a>
+                        </div>
+                    </div>
+                </div>
+                
                 <a href="../logout.php" class="btn-modern btn-secondary">
                     Logout
                 </a>
@@ -674,6 +991,9 @@ $conn->close();
                     <a href="manage_groups.php" class="action-btn">
                         <span>Student Groups</span>
                     </a>
+                    <a href="manage_candidates.php" class="action-btn">
+                        <span>Manage Candidates</span>
+                    </a>
                     <a href="../views/view_results.php" class="action-btn">
                         <span>View Results</span>
                     </a>
@@ -681,11 +1001,8 @@ $conn->close();
                         <span>Audit Logs</span>
                     </a>
                     <a href="restore_deleted.php" class="action-btn">
-                        <span>Restore Deleted Records</span>
+                        <span>Restore Records</span>
                     </a>
-                    <!--<a href="../helper/all_sessions.php" class="action-btn">
-                        <span>All Sessions</span>
-                    </a>-->
                 </div>
             </div>
         </div>
@@ -696,7 +1013,7 @@ $conn->close();
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <h2 class="card-title">Recent Sessions</h2>
                     <a href="../helper/all_sessions.php" class="btn-modern btn-secondary">
-                        View All →
+                        View All
                     </a>
                 </div>
             </div>
@@ -771,7 +1088,6 @@ $conn->close();
                     <?php endwhile; ?>
                 <?php else: ?>
                     <div class="empty-state">
-                        <div class="empty-icon">📋</div>
                         <h3 class="empty-title">No sessions yet</h3>
                         <p class="empty-description">Create your first voting session to get started!</p>
                         <a href="../helper/create_session.php" class="btn-modern btn-primary">
@@ -783,11 +1099,15 @@ $conn->close();
         </div>
     </div>
 
-    <?php if ($activeSessions > 0): ?>
     <script>
-        // Auto-refresh every 30 seconds if there are active sessions
-        setTimeout(() => location.reload(), 30000);
+        // Auto-refresh every 30 seconds if there are unread notifications or active sessions
+        <?php if ($unreadCount > 0 || $activeSessions > 0): ?>
+        setTimeout(() => {
+            if (document.visibilityState === 'visible') {
+                location.reload();
+            }
+        }, 30000);
+        <?php endif; ?>
     </script>
-    <?php endif; ?>
 </body>
 </html>

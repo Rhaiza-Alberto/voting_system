@@ -808,7 +808,7 @@ $conn->close();
                         <div class="form-group">
                             <label class="form-label">Student ID <span class="required">*</span></label>
                             <input type="text" name="student_id" class="form-input"
-                                   placeholder="e.g., 2024001" required>
+                                   placeholder="e.g., 202401234" required>
                         </div>
                         
                         <div class="form-group">

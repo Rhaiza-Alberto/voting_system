@@ -1,7 +1,7 @@
 <?php
 require_once '../config.php';
-require_once '../email_helper.php';
-require_once '../notification_helper.php';
+require_once '../helper/email_helper.php';
+require_once '../notifications/notification_helper.php';
 requireLogin();
 
 $conn = getDBConnection();
@@ -12,12 +12,13 @@ $message = '';
 $messageType = '';
 $debugInfo = [];
 
-// Get active session
+// Get active session with validation
 $sessionQuery = "SELECT * FROM voting_sessions WHERE status = 'active' ORDER BY id DESC LIMIT 1";
 $sessionResult = $conn->query($sessionQuery);
 $activeSession = $sessionResult->fetch_assoc();
 
 if (!$activeSession) {
+    $conn->close();
     header('Location: student_dashboard.php');
     exit();
 }
@@ -42,22 +43,27 @@ if ($activeSession['group_id']) {
     }
 }
 
-// Debug: Log voting attempt
+// Debug info
 $debugInfo[] = "Session ID: " . $sessionId;
 $debugInfo[] = "User ID: " . $userId;
 $debugInfo[] = "Current Position ID: " . ($currentPositionId ? $currentPositionId : "NONE OPEN");
 
-// Get user information with computed full_name (3NF compliant)
-$userQuery = "SELECT TRIM(CONCAT_WS(' ', first_name, middle_name, last_name)) AS full_name, 
-              student_id 
-              FROM users WHERE id = ?";
+// Get user information using helper function
+$userQuery = "SELECT first_name, middle_name, last_name, student_id FROM users WHERE id = ?";
 $stmt = $conn->prepare($userQuery);
 $stmt->bind_param("i", $userId);
 $stmt->execute();
 $userInfo = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 
-// Check if user is a candidate or elected in any position (for display purposes only)
+// Compute full name safely
+$userInfo['full_name'] = formatStudentName(
+    $userInfo['first_name'],
+    $userInfo['middle_name'],
+    $userInfo['last_name']
+);
+
+// Check if user is a candidate
 $userCandidacyQuery = "SELECT p.position_name, c.status 
                       FROM candidates c 
                       JOIN positions p ON c.position_id = p.id 
@@ -69,13 +75,13 @@ $userCandidacies = $stmt->get_result();
 $isCandidate = ($userCandidacies->num_rows > 0);
 $stmt->close();
 
-// Check if there's a position currently open for voting
-if (!$currentPositionId) {
-    $noPositionOpen = true;
-    $debugInfo[] = "Status: No position is currently open for voting";
-} else {
-    $noPositionOpen = false;
-    
+// Initialize variables
+$noPositionOpen = !$currentPositionId;
+$hasVoted = false;
+$currentPosition = null;
+$candidates = null;
+
+if (!$noPositionOpen) {
     // Get the current position details
     $positionQuery = "SELECT * FROM positions WHERE id = ?";
     $stmt = $conn->prepare($positionQuery);
@@ -84,192 +90,168 @@ if (!$currentPositionId) {
     $currentPosition = $stmt->get_result()->fetch_assoc();
     $stmt->close();
     
-    $debugInfo[] = "Open Position: " . $currentPosition['position_name'];
-    
-    // Check if user has already voted for this position
-    $voteCheckQuery = "SELECT id, voted_at FROM votes WHERE session_id = ? AND voter_id = ? AND position_id = ?";
-    $stmt = $conn->prepare($voteCheckQuery);
-    $stmt->bind_param("iii", $sessionId, $userId, $currentPositionId);
-    $stmt->execute();
-    $existingVote = $stmt->get_result()->fetch_assoc();
-    $hasVoted = ($existingVote !== null);
-    $stmt->close();
-    
-    if ($hasVoted) {
-        $debugInfo[] = "Vote Status: Already voted at " . $existingVote['voted_at'];
+    if (!$currentPosition) {
+        $noPositionOpen = true;
+        $debugInfo[] = "Error: Position ID " . $currentPositionId . " not found";
     } else {
-        $debugInfo[] = "Vote Status: NOT voted yet - eligible to vote";
+        $debugInfo[] = "Open Position: " . $currentPosition['position_name'];
+        
+        // Check if user has already voted
+        $voteCheckQuery = "SELECT id, voted_at FROM votes 
+                          WHERE session_id = ? AND voter_id = ? AND position_id = ? 
+                          AND deleted_at IS NULL";
+        $stmt = $conn->prepare($voteCheckQuery);
+        $stmt->bind_param("iii", $sessionId, $userId, $currentPositionId);
+        $stmt->execute();
+        $existingVote = $stmt->get_result()->fetch_assoc();
+        $hasVoted = ($existingVote !== null);
+        $stmt->close();
+        
+        $debugInfo[] = "Vote Status: " . ($hasVoted ? "Already voted at " . $existingVote['voted_at'] : "NOT voted yet");
+        
+        // Get candidates
+        $candidatesQuery = "SELECT c.id, c.user_id, c.status, 
+                        u.first_name, u.middle_name, u.last_name, u.student_id 
+                        FROM candidates c 
+                        JOIN users u ON c.user_id = u.id 
+                        WHERE c.position_id = ? 
+                        AND c.deleted_at IS NULL 
+                        AND u.deleted_at IS NULL
+                        ORDER BY u.last_name, u.first_name";
+        $stmt = $conn->prepare($candidatesQuery);
+        $stmt->bind_param("i", $currentPositionId);
+        $stmt->execute();
+        $candidates = $stmt->get_result();
+        $stmt->close();
+        
+        $debugInfo[] = "Available Candidates: " . $candidates->num_rows;
     }
-    
-    // Get candidates for current position with computed full_name (3NF compliant)
-    $candidatesQuery = "SELECT c.id, c.user_id, c.status, 
-                    u.first_name, u.middle_name, u.last_name, u.student_id 
-                    FROM candidates c 
-                    JOIN users u ON c.user_id = u.id 
-                    WHERE c.position_id = ? AND c.deleted_at IS NULL AND u.deleted_at IS NULL";
-
-    $stmt = $conn->prepare($candidatesQuery);
-    $stmt->bind_param("i", $currentPositionId);
-    $stmt->execute();
-    $candidates = $stmt->get_result();
-    $stmt->close();
-    
-    $debugInfo[] = "Available Candidates: " . $candidates->num_rows;
 }
 
-// Handle vote submission
+// Handle vote submission with transaction safety
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['candidate_id']) && isset($_POST['position_id'])) {
-    $candidateId = $_POST['candidate_id'];
-    $positionId = $_POST['position_id'];
+    $candidateId = intval($_POST['candidate_id']);
+    $positionId = intval($_POST['position_id']);
     
     $debugInfo[] = "=== VOTE SUBMISSION ATTEMPT ===";
     $debugInfo[] = "Candidate ID: " . $candidateId;
     $debugInfo[] = "Position ID: " . $positionId;
     
-    // Validate that this is the current position open for voting
-    if ($positionId != $currentPositionId) {
-        $message = '❌ Invalid position! This position is not currently open for voting. The admin may have closed it.';
-        $messageType = 'error';
-        $debugInfo[] = "Error: Position mismatch";
-    } else {
-        // CRITICAL CHECK: Verify user hasn't already voted for this position
-        $voteCheckQuery = "SELECT id FROM votes WHERE session_id = ? AND voter_id = ? AND position_id = ? AND deleted_at IS NULL";
-        $stmt = $conn->prepare($voteCheckQuery);
-        $stmt->bind_param("iii", $sessionId, $userId, $positionId);
+    try {
+        // Use the safe recordVote function
+        recordVote($sessionId, $userId, $candidateId, $positionId, $conn);
+        
+        // VOTE SUCCESSFUL - SEND NOTIFICATIONS
+        
+        // Get voter details
+        $voterQuery = "SELECT first_name, middle_name, last_name, email FROM users WHERE id = ?";
+        $stmt = $conn->prepare($voterQuery);
+        $stmt->bind_param("i", $userId);
         $stmt->execute();
-        $alreadyVoted = $stmt->get_result()->num_rows > 0;
+        $voterData = $stmt->get_result()->fetch_assoc();
         $stmt->close();
         
-        if ($alreadyVoted) {
-            $message = '⚠️ You have already voted for this position!';
-            $messageType = 'warning';
-            $debugInfo[] = "Error: Duplicate vote attempt blocked";
-        } else {
-            // Verify the candidate exists and is for the correct position
-            $candidateCheckQuery = "SELECT id FROM candidates WHERE id = ? AND position_id = ? AND deleted_at IS NULL"; 
-            $stmt = $conn->prepare($candidateCheckQuery);
-            $stmt->bind_param("ii", $candidateId, $positionId);
+        $voterFullName = formatStudentName(
+            $voterData['first_name'],
+            $voterData['middle_name'],
+            $voterData['last_name']
+        );
+        
+        // Get position details
+        $positionQuery = "SELECT position_name FROM positions WHERE id = ?";
+        $stmt = $conn->prepare($positionQuery);
+        $stmt->bind_param("i", $positionId);
+        $stmt->execute();
+        $position = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        
+        // Send confirmation email
+        $email->sendVotingConfirmationEmail(
+            $voterData['email'],
+            $voterFullName,
+            $position['position_name']
+        );
+        
+        // Notify all admins
+        $adminQuery = "SELECT id FROM users WHERE role = 'admin'";
+        $admins = $conn->query($adminQuery);
+        
+        while ($admin = $admins->fetch_assoc()) {
+            $notif->notifyAdminNewVote(
+                $admin['id'],
+                $voterFullName,
+                $position['position_name']
+            );
+        }
+        
+        // Check milestones
+        $totalStudentsQuery = "SELECT COUNT(*) as count FROM users WHERE role = 'student' AND deleted_at IS NULL";
+        $totalStudents = $conn->query($totalStudentsQuery)->fetch_assoc()['count'];
+        
+        $votersQuery = "SELECT COUNT(DISTINCT voter_id) as count FROM votes 
+                       WHERE session_id = ? AND position_id = ? AND deleted_at IS NULL";
+        $stmt = $conn->prepare($votersQuery);
+        $stmt->bind_param("ii", $sessionId, $positionId);
+        $stmt->execute();
+        $votersCount = $stmt->get_result()->fetch_assoc()['count'];
+        $stmt->close();
+        
+        if ($totalStudents > 0) {
+            $turnoutPercentage = ($votersCount / $totalStudents) * 100;
+            
+            // Get session name
+            $sessionQuery = "SELECT session_name FROM voting_sessions WHERE id = ?";
+            $stmt = $conn->prepare($sessionQuery);
+            $stmt->bind_param("i", $sessionId);
             $stmt->execute();
-            $candidateValid = $stmt->get_result()->num_rows > 0;
+            $session = $stmt->get_result()->fetch_assoc();
             $stmt->close();
             
-            if (!$candidateValid) {
-                $message = '❌ Invalid candidate selection!';
-                $messageType = 'error';
-                $debugInfo[] = "Error: Invalid candidate";
-            } else {
-                // Insert the vote (3NF normalized - only foreign keys)
-                $voteStmt = $conn->prepare("INSERT INTO votes (session_id, voter_id, candidate_id, position_id) VALUES (?, ?, ?, ?)");
-                $voteStmt->bind_param("iiii", $sessionId, $userId, $candidateId, $positionId);
-                
-                if ($voteStmt->execute()) {
-                    // ✅ VOTE SUCCESSFUL - SEND NOTIFICATIONS
-                    
-                    // Get voter details
-                    $voterQuery = "SELECT TRIM(CONCAT_WS(' ', first_name, middle_name, last_name)) AS full_name, email 
-                                   FROM users WHERE id = ?";
-                    $stmt = $conn->prepare($voterQuery);
-                    $stmt->bind_param("i", $userId);
-                    $stmt->execute();
-                    $voter = $stmt->get_result()->fetch_assoc();
-                    $stmt->close();
-                    
-                    // Get position details
-                    $positionQuery = "SELECT position_name FROM positions WHERE id = ?";
-                    $stmt = $conn->prepare($positionQuery);
-                    $stmt->bind_param("i", $positionId);
-                    $stmt->execute();
-                    $position = $stmt->get_result()->fetch_assoc();
-                    $stmt->close();
-                    
-                    // Send confirmation email
-                    $email->sendVotingConfirmationEmail(
-                        $voter['email'],
-                        $voter['full_name'],
-                        $position['position_name']
-                    );
-                    
-                    // Notify all admins
-                    $adminQuery = "SELECT id FROM users WHERE role = 'admin'";
-                    $admins = $conn->query($adminQuery);
-                    
+            // Check milestone notifications
+            $milestones = [25, 50, 75, 100];
+            foreach ($milestones as $milestone) {
+                $previousTurnout = (($votersCount - 1) / $totalStudents) * 100;
+                if ($turnoutPercentage >= $milestone && $previousTurnout < $milestone) {
+                    $admins->data_seek(0);
                     while ($admin = $admins->fetch_assoc()) {
-                        $notif->notifyAdminNewVote(
+                        $notif->notifyAdminMilestone(
                             $admin['id'],
-                            $voter['full_name'],
+                            $session['session_name'],
+                            $milestone,
                             $position['position_name']
                         );
-                    }
-                    
-                    // Check milestones
-                    $totalStudents = $conn->query("SELECT COUNT(*) as count FROM users WHERE role = 'student'")->fetch_assoc()['count'];
-                    
-                    $votersQuery = "SELECT COUNT(DISTINCT voter_id) as count FROM votes WHERE session_id = ? AND position_id = ?";
-                    $stmt = $conn->prepare($votersQuery);
-                    $stmt->bind_param("ii", $sessionId, $positionId);
-                    $stmt->execute();
-                    $votersCount = $stmt->get_result()->fetch_assoc()['count'];
-                    $stmt->close();
-                    
-                    if ($totalStudents > 0) {
-                        $turnoutPercentage = ($votersCount / $totalStudents) * 100;
                         
-                        // Get session name
-                        $sessionQuery = "SELECT session_name FROM voting_sessions WHERE id = ?";
-                        $stmt = $conn->prepare($sessionQuery);
-                        $stmt->bind_param("i", $sessionId);
-                        $stmt->execute();
-                        $session = $stmt->get_result()->fetch_assoc();
-                        $stmt->close();
-                        
-                        // Check milestone notifications
-                        $milestones = [25, 50, 75, 100];
-                        foreach ($milestones as $milestone) {
-                            $previousTurnout = (($votersCount - 1) / $totalStudents) * 100;
-                            if ($turnoutPercentage >= $milestone && $previousTurnout < $milestone) {
-                                $admins->data_seek(0);
-                                while ($admin = $admins->fetch_assoc()) {
-                                    $notif->notifyAdminMilestone(
-                                        $admin['id'],
-                                        $session['session_name'],
-                                        $milestone,
-                                        $position['position_name']
-                                    );
-                                    
-                                    if ($milestone == 100) {
-                                        $notif->notifyAdminFullTurnout(
-                                            $admin['id'],
-                                            $session['session_name'],
-                                            $position['position_name']
-                                        );
-                                    }
-                                }
-                            }
+                        if ($milestone == 100) {
+                            $notif->notifyAdminFullTurnout(
+                                $admin['id'],
+                                $session['session_name'],
+                                $position['position_name']
+                            );
                         }
                     }
-                    
-                    $message = '✅ Your vote has been recorded successfully!';
-                    $messageType = 'success';
-                    $hasVoted = true;
-                    
-                    // Log the vote
-                    error_log("VOTE: User=" . $userId . " (" . $userInfo['student_id'] . "), Position=" . $positionId . ", Candidate=" . $candidateId);
-                } else {
-                    // VOTE FAILED
-                    $message = '❌ Failed to record your vote. Error: ' . $voteStmt->error;
-                    $messageType = 'error';
-                    $debugInfo[] = "Error: Database insert failed - " . $voteStmt->error;
                 }
-                $voteStmt->close();
             }
         }
+        
+        $message = 'Your vote has been recorded successfully!';
+        $messageType = 'success';
+        $hasVoted = true;
+        
+        // Log the vote
+        error_log("VOTE: User=" . $userId . " (" . $userInfo['student_id'] . "), Position=" . $positionId . ", Candidate=" . $candidateId);
+        
+    } catch (Exception $e) {
+        $message = $e->getMessage();
+        $messageType = 'error';
+        $debugInfo[] = "Error: " . $e->getMessage();
     }
 }
 
 // Get total votes for current position
 $totalVotes = 0;
-if (!$noPositionOpen) {
-    $voteCountQuery = "SELECT COUNT(*) as total FROM votes WHERE session_id = ? AND position_id = ?";
+if (!$noPositionOpen && $currentPosition) {
+    $voteCountQuery = "SELECT COUNT(*) as total FROM votes 
+                      WHERE session_id = ? AND position_id = ? AND deleted_at IS NULL";
     $stmt = $conn->prepare($voteCountQuery);
     $stmt->bind_param("ii", $sessionId, $currentPositionId);
     $stmt->execute();
@@ -284,87 +266,532 @@ $conn->close();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cast Your Vote</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>Cast Your Vote - VoteSystem Pro</title>
     <style>
-        * {margin:0; padding:0; box-sizing:border-box;}
-        body {font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; background:#f7fafc; min-height:100vh;}
-        .navbar {background:linear-gradient(135deg,#10b981 0%,#059669 100%); color:white; padding:1rem 2rem; display:flex; justify-content:space-between; align-items:center; box-shadow:0 2px 4px rgba(0,0,0,0.1);}
-        .navbar h1 {font-size:1.5em;}
-        .navbar .user-info {display:flex; align-items:center; gap:15px; font-size:0.95em;}
-        .navbar a {color:white; text-decoration:none; padding:8px 16px; background:rgba(255,255,255,0.2); border-radius:5px; transition:background 0.3s;}
-        .navbar a:hover {background:rgba(255,255,255,0.3);}
-        .container {max-width:1000px; margin:2rem auto; padding:0 2rem;}
-        .session-info {background:white; padding:20px; border-radius:10px; box-shadow:0 2px 4px rgba(0,0,0,0.1); margin-bottom:20px; text-align:center;}
-        .session-info h2 {color:#10b981; margin-bottom:5px;}
-        .session-info p {color:#718096;}
-        .message {padding:15px 20px; border-radius:8px; margin-bottom:20px; text-align:center; font-weight:600; font-size:1.05em;}
-        .message.success {background:#d1fae5; color:#065f46; border-left:4px solid #10b981;}
-        .message.error {background:#fed7d7; color:#c53030; border-left:4px solid #f56565;}
-        .message.warning {background:#fef3c7; color:#92400e; border-left:4px solid #f59e0b;}
-        .info-banner {background:#dbeafe; border-left:4px solid #3b82f6; padding:15px 20px; margin-bottom:20px; border-radius:5px;}
-        .info-banner strong {color:#1e40af; display:block; margin-bottom:8px;}
-        .info-banner ul {margin:10px 0 0 20px; color:#1e40af;}
-        .info-banner ul li {margin:5px 0;}
-        .success-banner {background:#d1fae5; border-left:4px solid #10b981; padding:15px 20px; margin-bottom:20px; border-radius:5px;}
-        .success-banner strong {color:#065f46; display:block; margin-bottom:8px;}
-        .candidate-status-info {background:#fef3c7; border-left:4px solid #f59e0b; padding:15px 20px; margin-bottom:20px; border-radius:5px;}
-        .candidate-status-info strong {color:#92400e;}
-        .candidate-status-info ul {margin:10px 0 0 20px; color:#744210;}
-        .position-card {background:white; border-radius:10px; box-shadow:0 2px 4px rgba(0,0,0,0.1); overflow:hidden; margin-bottom:20px;}
-        .position-header {background:linear-gradient(135deg,#10b981 0%,#059669 100%); color:white; padding:25px; text-align:center;}
-        .position-header h3 {font-size:2em; margin-bottom:10px;}
-        .vote-count-badge {background:rgba(255,255,255,0.2); padding:8px 16px; border-radius:20px; display:inline-block; font-size:0.9em;}
-        .candidates-list {padding:30px;}
-        .candidate-item {display:flex; align-items:center; padding:20px; border:2px solid #e2e8f0; border-radius:10px; margin-bottom:15px; cursor:pointer; transition:all 0.3s;}
-        .candidate-item:hover {border-color:#10b981; background:#f7fafc; transform:translateX(5px);}
-        .candidate-item input[type="radio"] {width:24px; height:24px; margin-right:20px; cursor:pointer; accent-color:#10b981;}
-        .candidate-info {flex:1;}
-        .candidate-name {font-size:1.3em; font-weight:600; color:#2d3748; margin-bottom:5px;}
-        .candidate-id {color:#718096; font-size:0.95em;}
-        .vote-btn {width:100%; padding:18px; background:linear-gradient(135deg,#10b981 0%,#059669 100%); color:white; border:none; border-radius:10px; font-size:1.2em; font-weight:600; cursor:pointer; transition:all 0.3s; margin-top:20px;}
-        .vote-btn:hover {transform:translateY(-2px); box-shadow:0 10px 25px rgba(16,185,129,0.4);}
-        .success-card {background:linear-gradient(135deg,#10b981 0%,#059669 100%); color:white; padding:40px; border-radius:10px; text-align:center; box-shadow:0 4px 6px rgba(0,0,0,0.1); margin-bottom:20px;}
-        .success-card h3 {font-size:2em; margin-bottom:15px;}
-        .success-card p {font-size:1.1em; margin:10px 0; opacity:0.95;}
-        .empty-state {background:white; padding:60px 40px; border-radius:10px; text-align:center; box-shadow:0 2px 4px rgba(0,0,0,0.1);}
-        .empty-state-icon {font-size:5em; margin-bottom:20px;}
-        .empty-state h3 {color:#10b981; font-size:1.8em; margin-bottom:15px;}
-        .empty-state p {color:#718096; font-size:1.1em; line-height:1.6; margin:10px 0;}
-        .no-candidates {text-align:center; padding:40px; color:#718096;}
-        .debug-info {background:#f7fafc; border:1px solid #e2e8f0; padding:15px; border-radius:5px; margin-top:20px; font-family:monospace; font-size:0.85em;}
-        .debug-info h4 {color:#10b981; margin-bottom:10px;}
-        .debug-info ul {list-style:none; color:#4a5568;}
-        .debug-info ul li {padding:3px 0;}
-        @media (max-width:768px) {
-            .container {padding:1rem;}
-            .navbar {flex-direction:column; gap:10px;}
-            .position-header h3 {font-size:1.5em;}
-            .candidate-name {font-size:1.1em;}
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            min-height: 100vh;
+            padding-bottom: 2rem;
+        }
+        
+        /* Enhanced Navbar */
+        .modern-navbar {
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            padding: 1rem 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .navbar-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .navbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .brand-text h1 {
+            font-size: 1.5rem;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .brand-text p {
+            font-size: 0.875rem;
+            color: #6b7280;
+        }
+
+        .user-section {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.5rem 1rem;
+            background: #f0fdf4;
+            border-radius: 50px;
+            border: 2px solid #d1fae5;
+        }
+
+        .user-avatar {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+        
+        /* Enhanced Buttons */
+        .btn-modern {
+            padding: 0.75rem 1.5rem;
+            border-radius: 10px;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            font-size: 0.875rem;
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #1f2937;
+            border: 2px solid #d1fae5;
+        }
+
+        .btn-secondary:hover {
+            border-color: #10b981;
+            background: #f0fdf4;
+            transform: translateY(-2px);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.4);
+            font-size: 1.125rem;
+            padding: 1rem 2rem;
+            width: 100%;
+            justify-content: center;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.5);
+        }
+        
+        .modern-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+        
+        /* Session Header */
+        .session-header-card {
+            background: white;
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            margin-bottom: 2rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .session-header-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+        }
+
+        .session-title {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 0.5rem;
+        }
+
+        .session-subtitle {
+            font-size: 1rem;
+            color: #6b7280;
+            font-weight: 500;
+        }
+        
+        /* Message Alerts */
+        .alert {
+            padding: 1.25rem 1.5rem;
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            font-weight: 500;
+            border-left: 4px solid;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .alert-success {
+            background: #d1fae5;
+            color: #065f46;
+            border-color: #10b981;
+        }
+
+        .alert-error {
+            background: #fee2e2;
+            color: #991b1b;
+            border-color: #ef4444;
+        }
+
+        .alert-warning {
+            background: #fef3c7;
+            color: #92400e;
+            border-color: #f59e0b;
+        }
+
+        .alert-info {
+            background: #dbeafe;
+            color: #1e40af;
+            border-color: #3b82f6;
+        }
+
+        .alert-title {
+            font-weight: 700;
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .alert ul {
+            margin: 0.75rem 0 0 1.25rem;
+            line-height: 1.6;
+        }
+
+        .alert ul li {
+            margin: 0.5rem 0;
+        }
+        
+        /* Modern Cards */
+        .modern-card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            margin-bottom: 2rem;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .card-header {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .card-header h3 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.75rem;
+        }
+
+        .card-meta {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            font-size: 0.875rem;
+            opacity: 0.95;
+            flex-wrap: wrap;
+        }
+
+        .meta-badge {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 0.5rem 1rem;
+            border-radius: 50px;
+            font-weight: 600;
+        }
+
+        .card-body {
+            padding: 2rem;
+        }
+        
+        /* Candidate Items */
+        .candidate-item {
+            display: flex;
+            align-items: center;
+            padding: 1.5rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            margin-bottom: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f9fafb;
+        }
+
+        .candidate-item:hover {
+            border-color: #10b981;
+            background: white;
+            transform: translateX(5px);
+            box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2);
+        }
+
+        .candidate-item input[type="radio"] {
+            width: 24px;
+            height: 24px;
+            margin-right: 1.5rem;
+            cursor: pointer;
+            accent-color: #10b981;
+        }
+
+        .candidate-info {
+            flex: 1;
+        }
+
+        .candidate-name {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 0.25rem;
+        }
+
+        .candidate-id {
+            color: #6b7280;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .you-badge {
+            display: inline-block;
+            background: #d1fae5;
+            color: #065f46;
+            padding: 0.25rem 0.75rem;
+            border-radius: 50px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-left: 0.5rem;
+        }
+        
+        /* Success State */
+        .success-state {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            padding: 3rem 2rem;
+            border-radius: 16px;
+            text-align: center;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+
+        .success-state h3 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        .success-state p {
+            font-size: 1.125rem;
+            line-height: 1.6;
+            opacity: 0.95;
+            margin: 0.75rem 0;
+        }
+
+        .success-state-meta {
+            font-size: 1rem;
+            opacity: 0.9;
+            margin-top: 1.5rem;
+        }
+
+        .success-state .btn-secondary {
+            margin-top: 1.5rem;
+            background: white;
+            color: #10b981;
+        }
+
+        .success-state .btn-secondary:hover {
+            background: #f0fdf4;
+        }
+        
+        /* Empty State */
+        .empty-state {
+            background: white;
+            padding: 4rem 2rem;
+            border-radius: 16px;
+            text-align: center;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        .empty-state h3 {
+            color: #10b981;
+            font-size: 1.75rem;
+            margin-bottom: 1rem;
+            font-weight: 700;
+        }
+
+        .empty-state p {
+            color: #6b7280;
+            font-size: 1rem;
+            line-height: 1.6;
+            margin: 0.75rem 0;
+        }
+
+        .empty-state p strong {
+            color: #1f2937;
+        }
+
+        .empty-state-meta {
+            font-size: 0.875rem;
+            color: #9ca3af;
+            margin-top: 1.5rem;
+        }
+
+        .no-candidates {
+            text-align: center;
+            padding: 3rem 2rem;
+            color: #6b7280;
+        }
+
+        .no-candidates p:first-child {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 0.75rem;
+        }
+        
+        /* Debug Info */
+        .debug-info {
+            background: #f9fafb;
+            border: 2px solid #e5e7eb;
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin-top: 2rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+        }
+
+        .debug-info h4 {
+            color: #10b981;
+            margin-bottom: 1rem;
+            font-weight: 700;
+        }
+
+        .debug-info ul {
+            list-style: none;
+            color: #4a5568;
+        }
+
+        .debug-info ul li {
+            padding: 0.375rem 0;
+        }
+
+        .debug-info p {
+            margin-top: 1rem;
+            color: #6b7280;
+            font-size: 0.875rem;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease forwards;
+        }
+        
+        @media (max-width: 768px) {
+            .modern-container {
+                padding: 0 1rem;
+            }
+
+            .navbar-content {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .session-title {
+                font-size: 1.5rem;
+            }
+
+            .card-header h3 {
+                font-size: 1.5rem;
+            }
+
+            .candidate-name {
+                font-size: 1.125rem;
+            }
+
+            .candidate-item {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .candidate-item input[type="radio"] {
+                margin-bottom: 1rem;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="navbar">
-        <h1>🗳️ Cast Your Vote</h1>
-        <div class="user-info">
-            <span><?php echo htmlspecialchars($userInfo['full_name']); ?> (<?php echo htmlspecialchars($userInfo['student_id']); ?>)</span>
-            <a href="student_dashboard.php">← Back</a>
+    <!-- Enhanced Navbar -->
+    <nav class="modern-navbar">
+        <div class="navbar-content">
+            <div class="navbar-brand">
+                <div class="brand-text">
+                    <h1>VoteSystem Pro</h1>
+                    <p>Cast Your Vote</p>
+                </div>
+            </div>
+            <div class="user-section">
+                <div class="user-info">
+                    <div class="user-avatar">
+                        <?php echo strtoupper(substr($userInfo['full_name'], 0, 1)); ?>
+                    </div>
+                    <span style="font-weight: 500; color: #1f2937;">
+                        <?php echo htmlspecialchars($userInfo['full_name']); ?>
+                    </span>
+                    <span style="color: #6b7280; font-size: 0.875rem;">
+                        (<?php echo htmlspecialchars($userInfo['student_id']); ?>)
+                    </span>
+                </div>
+                <a href="student_dashboard.php" class="btn-modern btn-secondary">
+                    Back to Dashboard
+                </a>
+            </div>
         </div>
-    </div>
+    </nav>
     
-    <div class="container">
-        <div class="session-info">
-            <h2><?php echo htmlspecialchars($activeSession['session_name']); ?></h2>
-            <p>Sequential Voting - One Position at a Time</p>
+    <div class="modern-container">
+        <!-- Session Header -->
+        <div class="session-header-card fade-in">
+            <h2 class="session-title"><?php echo htmlspecialchars($activeSession['session_name']); ?></h2>
+            <p class="session-subtitle">Sequential Voting - One Position at a Time</p>
         </div>
         
+        <!-- Messages -->
         <?php if ($message): ?>
-            <div class="message <?php echo $messageType; ?>"><?php echo $message; ?></div>
+            <div class="alert alert-<?php echo $messageType; ?> fade-in">
+                <?php echo htmlspecialchars($message); ?>
+            </div>
         <?php endif; ?>
         
+        <!-- Candidacy Status -->
         <?php if ($isCandidate): ?>
-            <div class="candidate-status-info">
-                <strong>📋 Your Candidacy Status:</strong>
+            <div class="alert alert-warning fade-in">
+                <div class="alert-title">Your Candidacy Status</div>
                 <ul>
                     <?php
                     $userCandidacies->data_seek(0);
@@ -376,17 +803,17 @@ $conn->close();
             </div>
         <?php endif; ?>
         
+        <!-- No Position Open State -->
         <?php if ($noPositionOpen): ?>
-            <div class="empty-state">
-                <div class="empty-state-icon">⏳</div>
+            <div class="empty-state fade-in">
                 <h3>No Position Open for Voting</h3>
                 <p><strong>What this means:</strong> The administrator hasn't opened a position for voting yet, or closed the previous position and hasn't opened the next one.</p>
-                <p style="margin-top:15px;"><strong>What to do:</strong> Please wait. The page will auto-refresh. When a position opens, you'll be able to vote!</p>
-                <p style="margin-top:15px; font-size:0.95em; color:#a0aec0;">This page auto-refreshes every 15 seconds</p>
+                <p style="margin-top: 1rem;"><strong>What to do:</strong> Please wait. The page will auto-refresh. When a position opens, you'll be able to vote!</p>
+                <p class="empty-state-meta">This page auto-refreshes every 15 seconds</p>
             </div>
             
-            <div class="info-banner">
-                <strong>ℹ️ How Sequential Voting Works:</strong>
+            <div class="alert alert-info fade-in" style="animation-delay: 0.1s;">
+                <div class="alert-title">How Sequential Voting Works</div>
                 <ul>
                     <li>Admin opens ONE position at a time (e.g., President)</li>
                     <li>ALL students can vote for that position</li>
@@ -395,29 +822,37 @@ $conn->close();
                     <li>This continues until all positions are filled</li>
                 </ul>
             </div>
+        
+        <!-- Already Voted State -->
         <?php elseif ($hasVoted): ?>
-            <div class="success-card">
-                <h3>✅ Vote Recorded!</h3>
+            <div class="success-state fade-in">
+                <h3>Vote Recorded!</h3>
                 <p>Thank you for voting for <strong><?php echo htmlspecialchars($currentPosition['position_name']); ?></strong></p>
                 <p>Your vote has been securely recorded and counted.</p>
-                <p style="font-size:0.95em; opacity:0.9; margin-top:20px;">📊 <?php echo $totalVotes; ?> total votes cast so far</p>
-                <a href="../views/student_results.php" style="background:white; color:#10b981; margin-top:20px; padding:12px 30px; text-decoration:none; display:inline-block; border-radius:8px; font-weight:600;">View Results</a>
+                <p class="success-state-meta"><?php echo $totalVotes; ?> total votes cast so far</p>
+                <a href="../students/student_results.php" class="btn-modern btn-secondary">
+                    View Results
+                </a>
             </div>
             
-            <div class="info-banner">
-                <strong>Note:</strong>
-                <p style="margin:8px 0 0 0; color:#1e40af;">The admin will close this position when enough votes are collected, determine the winner, then open the next position. Check back later!</p>
+            <div class="alert alert-info fade-in" style="animation-delay: 0.1s;">
+                <div class="alert-title">What happens next?</div>
+                <p style="margin: 0.5rem 0 0 0;">The admin will close this position when enough votes are collected, determine the winner, then open the next position. Check back later!</p>
             </div>
+        
+        <!-- Voting Form -->
         <?php else: ?>
-            
-            <div class="position-card">
-                <div class="position-header">
-                    <h3>🏆 <?php echo htmlspecialchars($currentPosition['position_name']); ?></h3>
-                    <span class="vote-count-badge">Priority #<?php echo $currentPosition['position_order']; ?> • <?php echo $totalVotes; ?> votes cast</span>
+            <div class="modern-card fade-in">
+                <div class="card-header">
+                    <h3><?php echo htmlspecialchars($currentPosition['position_name']); ?></h3>
+                    <div class="card-meta">
+                        <span class="meta-badge">Priority #<?php echo $currentPosition['position_order']; ?></span>
+                        <span class="meta-badge"><?php echo $totalVotes; ?> votes cast</span>
+                    </div>
                 </div>
                 
-                <div class="candidates-list">
-                    <?php if ($candidates->num_rows > 0): ?>
+                <div class="card-body">
+                    <?php if ($candidates && $candidates->num_rows > 0): ?>
                         <form method="POST" action="" id="voteForm">
                             <input type="hidden" name="position_id" value="<?php echo $currentPositionId; ?>">
                             
@@ -429,7 +864,7 @@ $conn->close();
                                         <div class="candidate-name">
                                             <?php echo htmlspecialchars($candidateName); ?>
                                             <?php if ($candidate['user_id'] == $userId): ?>
-                                                <span style="color:#10b981; font-size:0.8em;">(You)</span>
+                                                <span class="you-badge">You</span>
                                             <?php endif; ?>
                                         </div>
                                         <div class="candidate-id">Student ID: <?php echo htmlspecialchars($candidate['student_id']); ?></div>
@@ -437,35 +872,44 @@ $conn->close();
                                 </label>
                             <?php endwhile; ?>
                             
-                            <button type="submit" class="vote-btn" onclick="return confirm('⚠️ Confirm your vote?\n\nYou can only vote ONCE for this position!\n\nClick OK to submit.')">✅ Submit My Vote</button>
+                            <button type="submit" class="btn-modern btn-primary" onclick="return confirm('Confirm your vote?\n\nYou can only vote ONCE for this position!\n\nClick OK to submit.')">
+                                Submit My Vote
+                            </button>
                         </form>
                     <?php else: ?>
                         <div class="no-candidates">
-                            <p style="font-size:1.2em;">⚠️ No candidates nominated yet</p>
-                            <p style="margin-top:10px; color:#a0aec0;">The administrator needs to nominate candidates for this position first.</p>
+                            <p>No candidates nominated yet</p>
+                            <p>The administrator needs to nominate candidates for this position first.</p>
                         </div>
                     <?php endif; ?>
                 </div>
             </div>
         <?php endif; ?>
         
+        <!-- Debug Info -->
         <?php if (count($debugInfo) > 0 && (isset($_GET['debug']) || $messageType === 'error')): ?>
             <div class="debug-info">
-                <h4>🔧 Debug Information:</h4>
+                <h4>Debug Information</h4>
                 <ul>
                     <?php foreach ($debugInfo as $info): ?>
                         <li><?php echo htmlspecialchars($info); ?></li>
                     <?php endforeach; ?>
                 </ul>
-                <p style="margin-top:10px; color:#718096; font-size:0.9em;">If you see errors, screenshot this and show your administrator.</p>
+                <p>If you see errors, screenshot this and show your administrator.</p>
             </div>
         <?php endif; ?>
     </div>
     
     <script>
-        setTimeout(function() { location.reload(); }, 15000);
+        // Auto-refresh every 15 seconds
+        setTimeout(function() { 
+            if (document.visibilityState === 'visible') {
+                location.reload(); 
+            }
+        }, 15000);
         
-        <?php if (!$hasVoted && !$noPositionOpen && $candidates->num_rows > 0): ?>
+        <?php if (!$hasVoted && !$noPositionOpen && $candidates && $candidates->num_rows > 0): ?>
+        // Warn before leaving if form not submitted
         window.addEventListener('beforeunload', function (e) {
             var form = document.getElementById('voteForm');
             if (form && !form.hasAttribute('data-submitted')) {
@@ -474,10 +918,11 @@ $conn->close();
             }
         });
         
+        // Mark form as submitted
         document.getElementById('voteForm').addEventListener('submit', function() {
             this.setAttribute('data-submitted', 'true');
         });
         <?php endif; ?>
     </script>
 </body>
-</html>
+</html> 

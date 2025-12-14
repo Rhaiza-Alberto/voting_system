@@ -689,7 +689,7 @@ $conn->close();
                     <div class="form-group">
                         <label class="form-label">Session Name *</label>
                         <input type="text" name="session_name" class="form-input" 
-                               placeholder="e.g., Grade 10-A Student Council 2025" required>
+                               placeholder="e.g., Classroom Eletion 2025" required>
                     </div>
 
                     <div class="form-group">

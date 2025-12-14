@@ -426,7 +426,7 @@ $conn->close();
                         <div class="form-group">
                             <label class="form-label">Group Name *</label>
                             <input type="text" name="group_name" class="form-input" 
-                                   placeholder="e.g., Grade 10-A" required>
+                                   placeholder="e.g., ACT AD 2" required>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Description</label>

@@ -45,24 +45,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nominate'])) {
             $studentName = $stmtStudent->get_result()->fetch_assoc()['full_name'];
             $stmtStudent->close();
             
-            $message = ' Cannot nominate ' . htmlspecialchars($studentName) . ' for ' . 
+            $message = 'Cannot nominate ' . htmlspecialchars($studentName) . ' for ' . 
                        htmlspecialchars($targetPosition['position_name']) . '! They have already been elected as ' . 
                        htmlspecialchars($electedPosition['position_name']) . ' (higher priority position).';
             $messageType = 'error';
             $stmt->close();
         } else {
             $stmt->close();
-            // They can be nominated for same or higher priority positions
             nominateCandidate($conn, $userId, $positionId, $message, $messageType);
         }
     } else {
         $stmt->close();
-        // No elected position found, proceed with normal checks
         nominateCandidate($conn, $userId, $positionId, $message, $messageType);
     }
 }
 
-// Function to handle candidate nomination WITH SNAPSHOT SUPPORT
+// Function to handle candidate nomination
 function nominateCandidate($conn, $userId, $positionId, &$message, &$messageType) {
     // Check if already nominated
     $checkQuery = "SELECT id FROM candidates WHERE user_id = ? AND position_id = ?";
@@ -72,14 +70,14 @@ function nominateCandidate($conn, $userId, $positionId, &$message, &$messageType
     $result = $stmt->get_result();
     
     if ($result->num_rows > 0) {
-        $message = ' Student is already nominated for this position!';
+        $message = 'Student is already nominated for this position!';
         $messageType = 'warning';
     } else {
-        // Insert candidate - snapshot will be created automatically by trigger
+        // Insert candidate
         $insertStmt = $conn->prepare("INSERT INTO candidates (user_id, position_id) VALUES (?, ?)");
         $insertStmt->bind_param("ii", $userId, $positionId);
         if ($insertStmt->execute()) {
-            // Manually update snapshot if trigger isn't working
+            // Update snapshot
             $candidateId = $insertStmt->insert_id;
             $snapshotQuery = "UPDATE candidates c
                              JOIN users u ON c.user_id = u.id
@@ -92,10 +90,10 @@ function nominateCandidate($conn, $userId, $positionId, &$message, &$messageType
             $snapshotStmt->execute();
             $snapshotStmt->close();
             
-            $message = ' Candidate nominated successfully!';
+            $message = 'Candidate nominated successfully!';
             $messageType = 'success';
         } else {
-            $message = ' Failed to nominate candidate!';
+            $message = 'Failed to nominate candidate!';
             $messageType = 'error';
         }
         $insertStmt->close();
@@ -108,7 +106,7 @@ if (isset($_GET['remove'])) {
     $candidateId = $_GET['remove'];
     $adminId = $_SESSION['user_id'];
     
-    // Get candidate info including snapshot before soft deletion
+    // Get candidate info
     $candidateInfoQuery = "SELECT 
                            COALESCE(c.snapshot_full_name, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name))) as candidate_name,
                            p.position_name,
@@ -125,29 +123,29 @@ if (isset($_GET['remove'])) {
     $stmt->close();
     
     if ($voteCount > 0) {
-        $message = '⚠️ Warning: This candidate has ' . $voteCount . ' vote(s). ';
+        $message = 'Warning: This candidate has ' . $voteCount . ' vote(s). ';
     }
     
-    // Soft delete the candidate using stored procedure
+    // Soft delete the candidate
     $deleteStmt = $conn->prepare("CALL sp_soft_delete_candidate(?, ?)");
     $deleteStmt->bind_param("ii", $candidateId, $adminId);
     
     if ($deleteStmt->execute()) {
         if ($voteCount > 0) {
-            $message .= '✅ Candidate ' . htmlspecialchars($candidateInfo['candidate_name']) . ' soft deleted. ' . 
-                      $voteCount . ' vote(s) preserved in audit logs.';
+            $message .= 'Candidate ' . htmlspecialchars($candidateInfo['candidate_name']) . ' removed. ' . 
+                      $voteCount . ' vote(s) will be orphaned.';
         } else {
-            $message = '✅ Candidate soft deleted successfully!';
+            $message = 'Candidate removed successfully!';
         }
         $messageType = 'success';
     } else {
-        $message = '⛔ Failed to remove candidate!';
+        $message = 'Failed to remove candidate!';
         $messageType = 'error';
     }
     $deleteStmt->close();
 }
 
-// Get all students with computed full_name (3NF compliant)
+// Get all students
 $studentsQuery = "SELECT 
                     id, 
                     student_id, 
@@ -164,7 +162,7 @@ $students = $conn->query($studentsQuery);
 $positionsQuery = "SELECT * FROM positions ORDER BY position_order";
 $positions = $conn->query($positionsQuery);
 
-// Get all candidates with snapshot data and vote counts
+// Get all candidates
 $candidatesQuery = "SELECT 
                         c.id,
                         c.user_id,
@@ -189,11 +187,6 @@ $candidatesQuery = "SELECT
 
 $candidates = $conn->query($candidatesQuery);
 
-// Get count of orphaned votes
-$orphanedVotesQuery = "SELECT COUNT(*) as count FROM votes WHERE candidate_id IS NULL";
-$orphanedVotesResult = $conn->query($orphanedVotesQuery);
-$orphanedVotesCount = $orphanedVotesResult->fetch_assoc()['count'];
-
 $conn->close();
 ?>
 <!DOCTYPE html>
@@ -201,414 +194,554 @@ $conn->close();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Candidates - VoteSystem Pro</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <title>Manage Candidates</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #f7fafc;
-        }
-        
-        .navbar {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            color: white;
+            min-height: 100vh;
+            padding-bottom: 2rem;
+        }
+
+        /* Enhanced Navbar */
+        .modern-navbar {
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
             padding: 1rem 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .navbar-content {
+            max-width: 1400px;
+            margin: 0 auto;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        
-        .navbar h1 {
-            font-size: 1.5em;
+
+        .navbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
         }
-        
-        .navbar a {
-            color: white;
-            text-decoration: none;
-            padding: 8px 16px;
-            background: rgba(255,255,255,0.2);
-            border-radius: 5px;
+
+        .brand-text h1 {
+            font-size: 1.5rem;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
-        
-        .navbar a:hover {
-            background: rgba(255,255,255,0.3);
+
+        .brand-text p {
+            font-size: 0.875rem;
+            color: #6b7280;
         }
-        
-        .container {
-            max-width: 1200px;
-            margin: 2rem auto;
+
+        .modern-container {
+            max-width: 1400px;
+            margin: 0 auto;
             padding: 0 2rem;
         }
-        
-        .card {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
+
+        /* Alert Styles */
+        .alert {
+            padding: 1.25rem 1.5rem;
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            font-weight: 500;
+            animation: fadeIn 0.5s ease;
         }
-        
-        .card h2 {
-            color: #10b981;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #e2e8f0;
+
+        .alert-error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 2px solid #fecaca;
         }
-        
-        .message {
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            text-align: center;
-            font-weight: 600;
+
+        .alert-success {
+            background: #d1fae5;
+            color: #065f46;
+            border: 2px solid #a7f3d0;
         }
-        
-        .message.success {
-            background: #c6f6d5;
-            color: #22543d;
-        }
-        
-        .message.error {
-            background: #fed7d7;
-            color: #c53030;
-        }
-        
-        .message.warning {
+
+        .alert-warning {
             background: #fef3c7;
             color: #92400e;
+            border: 2px solid #fde68a;
         }
-        
-        .info-banner {
+
+        .alert-info {
             background: #dbeafe;
-            border-left: 4px solid #3b82f6;
-            padding: 15px;
-            margin-bottom: 20px;
-            border-radius: 5px;
-        }
-        
-        .info-banner strong {
             color: #1e40af;
+            border: 2px solid #bfdbfe;
         }
-        
+
+        /* Enhanced Cards */
+        .modern-card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            margin-bottom: 2rem;
+            overflow: hidden;
+        }
+
+        .card-header {
+            padding: 1.75rem 2rem;
+            border-bottom: 1px solid #e5e7eb;
+            background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);
+        }
+
+        .card-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #1f2937;
+        }
+
+        .card-body {
+            padding: 2rem;
+        }
+
+        /* Form Styles */
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 1.5rem;
         }
-        
-        label {
+
+        .form-label {
             display: block;
-            margin-bottom: 8px;
-            color: #333;
+            font-size: 0.875rem;
             font-weight: 600;
+            color: #374151;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
-        
-        select {
+
+        .form-select {
             width: 100%;
-            padding: 12px;
-            border: 2px solid #e2e8f0;
-            border-radius: 8px;
-            font-size: 1em;
+            padding: 0.75rem 1rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            background: white;
+            cursor: pointer;
         }
-        
-        select:focus {
+
+        .form-select:focus {
             outline: none;
             border-color: #10b981;
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
         }
-        
-        .btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 8px;
-            font-size: 1em;
-            cursor: pointer;
+
+        /* Enhanced Buttons */
+        .btn-modern {
+            padding: 0.75rem 1.5rem;
+            border-radius: 10px;
             font-weight: 600;
-            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            font-size: 0.875rem;
         }
-        
+
         .btn-primary {
-            background: #10b981;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
             color: white;
+            box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.4);
         }
-        
+
         .btn-primary:hover {
-            background: #059669;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.5);
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #1f2937;
+            border: 2px solid #d1fae5;
+        }
+
+        .btn-secondary:hover {
+            border-color: #10b981;
+            background: #f0fdf4;
             transform: translateY(-2px);
         }
-        
+
         .btn-danger {
-            background: #f56565;
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
             color: white;
-            padding: 8px 16px;
-            font-size: 0.9em;
+            padding: 0.625rem 1.25rem;
+            font-size: 0.875rem;
         }
-        
+
         .btn-danger:hover {
-            background: #e53e3e;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(239, 68, 68, 0.4);
         }
-        
+
         .btn-warning {
-            background: #f59e0b;
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
             color: white;
-            padding: 8px 16px;
-            font-size: 0.9em;
+            padding: 0.625rem 1.25rem;
+            font-size: 0.875rem;
         }
-        
+
         .btn-warning:hover {
-            background: #d97706;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(245, 158, 11, 0.4);
         }
-        
+
+        /* Table Styles */
+        .table-container {
+            overflow-x: auto;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
         }
-        
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #e2e8f0;
-        }
-        
+
         th {
-            background: #f7fafc;
-            color: #10b981;
+            background: #f9fafb;
+            padding: 1rem;
+            text-align: left;
             font-weight: 600;
+            color: #374151;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 2px solid #e5e7eb;
         }
-        
+
+        td {
+            padding: 1rem;
+            border-bottom: 1px solid #e5e7eb;
+            color: #1f2937;
+        }
+
         tr:hover {
-            background: #f7fafc;
+            background: #f9fafb;
         }
-        
+
         tr.has-votes {
             background: #fef3c7;
         }
-        
+
         tr.has-votes:hover {
             background: #fde68a;
         }
-        
-        .status-badge {
-            padding: 5px 12px;
-            border-radius: 12px;
-            font-size: 0.85em;
+
+        /* Badge Styles */
+        .badge {
+            display: inline-block;
+            padding: 0.375rem 0.875rem;
+            border-radius: 50px;
+            font-size: 0.75rem;
             font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
-        
+
         .badge-nominated {
-            background: #feebc8;
-            color: #744210;
-        }
-        
-        .badge-elected {
-            background: #c6f6d5;
-            color: #22543d;
-        }
-        
-        .badge-lost {
-            background: #fed7d7;
-            color: #742a2a;
-        }
-        
-        .badge-ineligible {
-            background: #e2e8f0;
-            color: #4a5568;
-        }
-        
-        .vote-count-badge {
-            background: #dbeafe;
-            color: #1e40af;
-            padding: 4px 10px;
-            border-radius: 10px;
-            font-size: 0.8em;
-            font-weight: 600;
-            margin-left: 10px;
-        }
-        
-        .vote-count-badge.has-votes {
             background: #fef3c7;
             color: #92400e;
         }
-        
-        .warning-icon {
-            color: #f59e0b;
-            margin-right: 5px;
+
+        .badge-elected {
+            background: #d1fae5;
+            color: #065f46;
         }
-        
+
+        .badge-lost {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .badge-ineligible {
+            background: #e5e7eb;
+            color: #6b7280;
+        }
+
+        .vote-badge {
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 0.25rem 0.75rem;
+            border-radius: 50px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .vote-badge.has-votes {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        /* Legend */
+        .legend {
+            background: #f9fafb;
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            border: 2px solid #e5e7eb;
+        }
+
+        .legend-title {
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 0.5rem;
+        }
+
+        .legend-item {
+            display: inline-block;
+            margin-right: 1rem;
+            font-size: 0.875rem;
+            color: #6b7280;
+        }
+
+        .legend-sample {
+            background: #fef3c7;
+            padding: 0.25rem 0.75rem;
+            border-radius: 6px;
+            margin: 0 0.25rem;
+        }
+
+        /* Info Banner */
+        .info-banner {
+            background: #dbeafe;
+            border-left: 4px solid #3b82f6;
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 1.5rem;
+            border-radius: 8px;
+        }
+
+        .info-banner strong {
+            color: #1e40af;
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+
+        .info-banner ul {
+            margin-left: 1.5rem;
+            margin-top: 0.5rem;
+            color: #1e40af;
+        }
+
+        .info-banner li {
+            margin: 0.25rem 0;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease forwards;
+        }
+
+        /* Responsive */
         @media (max-width: 768px) {
-            .container {
-                padding: 1rem;
+            .modern-container {
+                padding: 0 1rem;
             }
-            
+
+            .navbar-content {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .card-body {
+                padding: 1.5rem;
+            }
+
+            .table-container {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
             table {
-                font-size: 0.9em;
+                font-size: 0.875rem;
+                min-width: 900px;
             }
-            
+
             th, td {
-                padding: 8px;
+                padding: 0.75rem 0.5rem;
             }
         }
     </style>
 </head>
 <body>
-    <div class="navbar">
-        <h1> Manage Candidates</h1>
-        <a href="admin_dashboard.php">← Back to Dashboard</a>
-    </div>
-    
-    <div class="container">
+    <!-- Enhanced Navbar -->
+    <nav class="modern-navbar">
+        <div class="navbar-content">
+            <div class="navbar-brand">
+                <div class="brand-text">
+                    <h1>VoteSystem Pro</h1>
+                    <p>Manage Candidates</p>
+                </div>
+            </div>
+            <a href="admin_dashboard.php" class="btn-modern btn-secondary">Back to Dashboard</a>
+        </div>
+    </nav>
+
+    <div class="modern-container">
         <?php if ($message): ?>
-            <div class="message <?php echo $messageType; ?>"><?php echo $message; ?></div>
-        <?php endif; ?>
-        
-        <?php if ($orphanedVotesCount > 0): ?>
-            <div class="info-banner">
-                <strong> Data Preservation:</strong>
-                There are currently <strong><?php echo $orphanedVotesCount; ?> orphaned vote(s)</strong> in the system from deleted candidates. All data is preserved in audit logs.
+            <div class="alert alert-<?php echo $messageType; ?> fade-in">
+                <?php echo $message; ?>
             </div>
         <?php endif; ?>
         
-        <div class="card">
-            <h2>Nominate New Candidate</h2>
-            
-            <div class="info-banner">
-                <strong> Automatic Data Preservation:</strong> When you nominate a candidate, their information is automatically saved for historical records.
+        <!-- Nominate Candidate Form -->
+        <div class="modern-card fade-in">
+            <div class="card-header">
+                <h2 class="card-title">Nominate New Candidate</h2>
             </div>
-            
-            <div class="info-banner">
-                <strong> Important Rules:</strong>
-                <ul style="margin-left: 20px; margin-top: 10px; color: #1e40af;">
-                    <li>Students who have won a higher-priority position cannot be nominated for lower-priority positions</li>
-                    <li>This ensures fair representation and prevents position conflicts</li>
-                    <li>All historical data is preserved automatically</li>
-                </ul>
-            </div>
-            
-            <form method="POST" action="">
-                <div class="form-group">
-                    <label for="user_id">Select Student</label>
-                    <select name="user_id" id="user_id" required>
-                        <option value="">-- Choose Student --</option>
-                        <?php
-                        $students->data_seek(0);
-                        while ($student = $students->fetch_assoc()):
-                        ?>
-                            <option value="<?php echo $student['id']; ?>">
-                                <?php echo htmlspecialchars($student['full_name'] . ' (' . $student['student_id'] . ')'); ?>
-                            </option>
-                        <?php endwhile; ?>
-                    </select>
+            <div class="card-body">
+                <div class="info-banner">
+                    <strong>Important Rules</strong>
+                    <ul>
+                        <li>Students who have won a higher-priority position cannot be nominated for lower-priority positions</li>
+                        <li>This ensures fair representation and prevents position conflicts</li>
+                    </ul>
                 </div>
                 
-                <div class="form-group">
-                    <label for="position_id">Select Position</label>
-                    <select name="position_id" id="position_id" required>
-                        <option value="">-- Choose Position --</option>
-                        <?php
-                        $positions->data_seek(0);
-                        while ($position = $positions->fetch_assoc()):
-                        ?>
-                            <option value="<?php echo $position['id']; ?>">
-                                Priority #<?php echo $position['position_order']; ?> - <?php echo htmlspecialchars($position['position_name']); ?>
-                            </option>
-                        <?php endwhile; ?>
-                    </select>
-                </div>
-                
-                <button type="submit" name="nominate" class="btn btn-primary"> Nominate Candidate</button>
-            </form>
+                <form method="POST" action="">
+                    <div class="form-group">
+                        <label class="form-label">Select Student</label>
+                        <select name="user_id" class="form-select" required>
+                            <option value="">Choose Student</option>
+                            <?php
+                            $students->data_seek(0);
+                            while ($student = $students->fetch_assoc()):
+                            ?>
+                                <option value="<?php echo $student['id']; ?>">
+                                    <?php echo htmlspecialchars($student['full_name'] . ' (' . $student['student_id'] . ')'); ?>
+                                </option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Select Position</label>
+                        <select name="position_id" class="form-select" required>
+                            <option value="">Choose Position</option>
+                            <?php
+                            $positions->data_seek(0);
+                            while ($position = $positions->fetch_assoc()):
+                            ?>
+                                <option value="<?php echo $position['id']; ?>">
+                                    Priority #<?php echo $position['position_order']; ?> - <?php echo htmlspecialchars($position['position_name']); ?>
+                                </option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+                    
+                    <button type="submit" name="nominate" class="btn-modern btn-primary">
+                        Nominate Candidate
+                    </button>
+                </form>
+            </div>
         </div>
         
-        <div class="card">
-            <h2>Current Candidates</h2>
-            
-            <?php if ($candidates->num_rows > 0): ?>
-                <div style="margin-bottom: 15px; padding: 12px; background: #f7fafc; border-radius: 8px;">
-                    <strong style="color: #2d3748;">Legend:</strong>
-                    <span style="margin-left: 15px; font-size: 0.9em; color: #718096;">
-                        <span style="background: #fef3c7; padding: 4px 8px; border-radius: 4px; margin: 0 5px;">Yellow Background</span> = Has votes (will be orphaned if removed)
-                    </span>
-                </div>
-                
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Student Name</th>
-                            <th>Student ID</th>
-                            <th>Position</th>
-                            <th>Priority</th>
-                            <th>Status</th>
-                            <th>Votes</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php while ($candidate = $candidates->fetch_assoc()): ?>
-                            <tr <?php echo ($candidate['vote_count'] > 0) ? 'class="has-votes"' : ''; ?>>
-                                <td><?php echo htmlspecialchars($candidate['full_name']); ?></td>
-                                <td><?php echo htmlspecialchars($candidate['student_id']); ?></td>
-                                <td><?php echo htmlspecialchars($candidate['position_name']); ?></td>
-                                <td>#<?php echo $candidate['position_order']; ?></td>
-                                <td>
-                                    <span class="status-badge badge-<?php echo $candidate['status']; ?>">
-                                        <?php echo ucfirst($candidate['status']); ?>
-                                    </span>
-                                </td>
-                                <td>
-                                    <?php if ($candidate['vote_count'] > 0): ?>
-                                        <span class="vote-count-badge has-votes">
-                                            
-                                            <?php echo $candidate['vote_count']; ?> vote<?php echo $candidate['vote_count'] > 1 ? 's' : ''; ?>
-                                        </span>
-                                        <?php if ($candidate['sessions_count'] > 1): ?>
-                                            <br>
-                                            <span style="font-size: 0.8em; color: #718096;">
-                                                (<?php echo $candidate['sessions_count']; ?> sessions)
+        <!-- Current Candidates -->
+        <div class="modern-card fade-in" style="animation-delay: 0.1s;">
+            <div class="card-header">
+                <h2 class="card-title">Current Candidates</h2>
+            </div>
+            <div class="card-body">
+                <?php if ($candidates->num_rows > 0): ?>
+                    <div class="legend">
+                        <div class="legend-title">Legend</div>
+                        <span class="legend-item">
+                            <span class="legend-sample">Yellow Background</span> = Has votes (will be orphaned if removed)
+                        </span>
+                    </div>
+                    
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Student Name</th>
+                                    <th>Student ID</th>
+                                    <th>Position</th>
+                                    <th>Priority</th>
+                                    <th>Status</th>
+                                    <th>Votes</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php while ($candidate = $candidates->fetch_assoc()): ?>
+                                    <tr <?php echo ($candidate['vote_count'] > 0) ? 'class="has-votes"' : ''; ?>>
+                                        <td><?php echo htmlspecialchars($candidate['full_name']); ?></td>
+                                        <td><?php echo htmlspecialchars($candidate['student_id']); ?></td>
+                                        <td><?php echo htmlspecialchars($candidate['position_name']); ?></td>
+                                        <td>#<?php echo $candidate['position_order']; ?></td>
+                                        <td>
+                                            <span class="badge badge-<?php echo $candidate['status']; ?>">
+                                                <?php echo ucfirst($candidate['status']); ?>
                                             </span>
-                                        <?php endif; ?>
-                                    <?php else: ?>
-                                        <span style="color: #a0aec0; font-size: 0.9em;">No votes</span>
-                                    <?php endif; ?>
-                                </td>
-                                <td>
-                                    <?php if ($candidate['vote_count'] > 0): ?>
-                                        <a href="?remove=<?php echo $candidate['id']; ?>" 
-                                           class="btn btn-warning" 
-                                           onclick="return confirm(' Remove candidate with <?php echo $candidate['vote_count']; ?> vote(s)?\n\n<?php echo htmlspecialchars($candidate['full_name']); ?> for <?php echo htmlspecialchars($candidate['position_name']); ?>\n\nTheir <?php echo $candidate['vote_count']; ?> vote(s) will become orphaned but preserved in audit logs.\n\nContinue?')">
-                                             Remove (Has Votes)
-                                        </a>
-                                    <?php else: ?>
-                                        <a href="?remove=<?php echo $candidate['id']; ?>" 
-                                           class="btn btn-danger" 
-                                           onclick="return confirm(' Remove this candidate?\n\n<?php echo htmlspecialchars($candidate['full_name']); ?> for <?php echo htmlspecialchars($candidate['position_name']); ?>\n\nThis candidate has no votes.\n\nContinue?')">
-                                             Remove
-                                        </a>
-                                    <?php endif; ?>
-                                </td>
-                            </tr>
-                        <?php endwhile; ?>
-                    </tbody>
-                </table>
-            <?php else: ?>
-                <p style="text-align: center; color: #666; padding: 20px;">No candidates nominated yet.</p>
-            <?php endif; ?>
-        </div>
-        
-        <div class="card">
-            <h2> Understanding Vote Preservation</h2>
-            <div style="color: #4a5568; line-height: 1.8;">
-                <h3 style="color: #10b981; margin-bottom: 10px; font-size: 1.1em;">How the system handles candidate removal:</h3>
-                <ul style="margin-left: 20px;">
-                    <li><strong>Votes are NEVER deleted:</strong> When you remove a candidate, their votes remain in the database</li>
-                    <li><strong>Orphaned votes:</strong> These votes have their candidate_id set to NULL but remain counted</li>
-                    <li><strong>Historical data:</strong> Candidate information is preserved automatically</li>
-                    <li><strong>Audit trail preserved:</strong> All historical data remains available in audit logs</li>
-                    <li><strong>Safe for new sessions:</strong> You can safely cleanup old candidates when starting a new election</li>
-                </ul>
+                                        </td>
+                                        <td>
+                                            <?php if ($candidate['vote_count'] > 0): ?>
+                                                <span class="vote-badge has-votes">
+                                                    <?php echo $candidate['vote_count']; ?> vote<?php echo $candidate['vote_count'] > 1 ? 's' : ''; ?>
+                                                </span>
+                                                <?php if ($candidate['sessions_count'] > 1): ?>
+                                                    <div style="font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem;">
+                                                        (<?php echo $candidate['sessions_count']; ?> sessions)
+                                                    </div>
+                                                <?php endif; ?>
+                                            <?php else: ?>
+                                                <span style="color: #9ca3af; font-size: 0.875rem;">No votes</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <?php if ($candidate['vote_count'] > 0): ?>
+                                                <a href="?remove=<?php echo $candidate['id']; ?>" 
+                                                   class="btn-modern btn-warning" 
+                                                   onclick="return confirm('Remove candidate with <?php echo $candidate['vote_count']; ?> vote(s)?\n\n<?php echo htmlspecialchars($candidate['full_name']); ?> for <?php echo htmlspecialchars($candidate['position_name']); ?>\n\nTheir <?php echo $candidate['vote_count']; ?> vote(s) will become orphaned.\n\nContinue?')">
+                                                    Remove (Has Votes)
+                                                </a>
+                                            <?php else: ?>
+                                                <a href="?remove=<?php echo $candidate['id']; ?>" 
+                                                   class="btn-modern btn-danger" 
+                                                   onclick="return confirm('Remove this candidate?\n\n<?php echo htmlspecialchars($candidate['full_name']); ?> for <?php echo htmlspecialchars($candidate['position_name']); ?>\n\nThis candidate has no votes.\n\nContinue?')">
+                                                    Remove
+                                                </a>
+                                            <?php endif; ?>
+                                        </td>
+                                    </tr>
+                                <?php endwhile; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php else: ?>
+                    <div style="text-align: center; padding: 4rem 2rem;">
+                        <p style="font-size: 1.125rem; color: #6b7280;">No candidates nominated yet.</p>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>

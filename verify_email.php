@@ -1,7 +1,4 @@
 <?php
-// verify_email_debug.php - TEMPORARY FILE FOR DEBUGGING
-// Delete this after fixing the issue!
-
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/helper/verification_helper.php';
 

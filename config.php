@@ -72,13 +72,14 @@ function getWinnerVoteCount($sessionId, $positionId, $userId, $conn = null) {
               JOIN candidates c ON v.candidate_id = c.id
               WHERE v.session_id = ? 
               AND v.position_id = ? 
-              AND c.user_id = ?";
+              AND c.user_id = ?
+              AND v.deleted_at IS NULL";
     
     $stmt = $conn->prepare($query);
     $stmt->bind_param("iii", $sessionId, $positionId, $userId);
     $stmt->execute();
     $result = $stmt->get_result()->fetch_assoc();
-    $voteCount = $result['vote_count'];
+    $voteCount = $result['vote_count'] ?? 0;
     
     $stmt->close();
     if ($closeConn) {
@@ -226,4 +227,178 @@ function isDeleted($conn, $table, $id) {
     return ($result && $result['deleted_at'] !== null);
 }
 
+/**
+ * Safely get computed full name from database
+ * Prevents SQL injection in name concatenation
+ * This is an alias for getUserFullName for compatibility
+ */
+function getFullName($userId, $conn = null) {
+    return getUserFullName($userId, $conn);
+}
+
+/**
+ * Validate that a session is in the expected state
+ * Prevents race conditions during state transitions
+ */
+function validateSessionState($sessionId, $expectedStatus, $conn = null) {
+    $closeConnection = false;
+    
+    if ($conn === null) {
+        $conn = getDBConnection();
+        $closeConnection = true;
+    }
+    
+    $query = "SELECT status FROM voting_sessions WHERE id = ?";
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("i", $sessionId);
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    
+    if ($closeConnection) {
+        $conn->close();
+    }
+    
+    if (!$result) {
+        return false;
+    }
+    
+    if (is_array($expectedStatus)) {
+        return in_array($result['status'], $expectedStatus);
+    }
+    
+    return $result['status'] === $expectedStatus;
+}
+
+/**
+ * Check if a position is currently open for voting
+ * Prevents voting on closed positions
+ */
+function isPositionOpen($sessionId, $positionId, $conn = null) {
+    $closeConnection = false;
+    
+    if ($conn === null) {
+        $conn = getDBConnection();
+        $closeConnection = true;
+    }
+    
+    $query = "SELECT current_position_id, status 
+              FROM voting_sessions 
+              WHERE id = ? AND status = 'active'";
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("i", $sessionId);
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    
+    if ($closeConnection) {
+        $conn->close();
+    }
+    
+    if (!$result) {
+        return false;
+    }
+    
+    return $result['current_position_id'] == $positionId;
+}
+
+/**
+ * Prevent duplicate votes with transaction safety
+ * Records a vote with full validation and race condition prevention
+ * 
+ * @param int $sessionId Voting session ID
+ * @param int $voterId User ID of the voter
+ * @param int $candidateId Candidate ID being voted for
+ * @param int $positionId Position ID being voted for
+ * @param mysqli $conn Optional database connection
+ * @return bool Success status
+ * @throws Exception If vote cannot be recorded
+ */
+function recordVote($sessionId, $voterId, $candidateId, $positionId, $conn = null) {
+    $closeConnection = false;
+    
+    if ($conn === null) {
+        $conn = getDBConnection();
+        $closeConnection = true;
+    }
+    
+    // Start transaction
+    $conn->begin_transaction();
+    
+    try {
+        // Lock the votes table to prevent race conditions
+        $conn->query("LOCK TABLES votes WRITE, voting_sessions READ, candidates READ");
+        
+        // Verify position is still open
+        if (!isPositionOpen($sessionId, $positionId, $conn)) {
+            throw new Exception("Position is no longer open for voting");
+        }
+        
+        // Check for duplicate vote
+        $checkQuery = "SELECT id FROM votes 
+                       WHERE session_id = ? 
+                       AND voter_id = ? 
+                       AND position_id = ? 
+                       AND deleted_at IS NULL 
+                       FOR UPDATE";
+        $stmt = $conn->prepare($checkQuery);
+        $stmt->bind_param("iii", $sessionId, $voterId, $positionId);
+        $stmt->execute();
+        $existingVote = $stmt->get_result()->num_rows > 0;
+        $stmt->close();
+        
+        if ($existingVote) {
+            throw new Exception("You have already voted for this position");
+        }
+        
+        // Verify candidate exists and is valid
+        $candidateQuery = "SELECT id FROM candidates 
+                          WHERE id = ? 
+                          AND position_id = ? 
+                          AND deleted_at IS NULL";
+        $stmt = $conn->prepare($candidateQuery);
+        $stmt->bind_param("ii", $candidateId, $positionId);
+        $stmt->execute();
+        $candidateValid = $stmt->get_result()->num_rows > 0;
+        $stmt->close();
+        
+        if (!$candidateValid) {
+            throw new Exception("Invalid candidate selection");
+        }
+        
+        // Insert vote
+        $insertQuery = "INSERT INTO votes (session_id, voter_id, candidate_id, position_id) 
+                       VALUES (?, ?, ?, ?)";
+        $stmt = $conn->prepare($insertQuery);
+        $stmt->bind_param("iiii", $sessionId, $voterId, $candidateId, $positionId);
+        
+        if (!$stmt->execute()) {
+            throw new Exception("Failed to record vote: " . $stmt->error);
+        }
+        $stmt->close();
+        
+        // Unlock tables
+        $conn->query("UNLOCK TABLES");
+        
+        // Commit transaction
+        $conn->commit();
+        
+        if ($closeConnection) {
+            $conn->close();
+        }
+        
+        return true;
+        
+    } catch (Exception $e) {
+        // Rollback on error
+        $conn->query("UNLOCK TABLES");
+        $conn->rollback();
+        
+        if ($closeConnection) {
+            $conn->close();
+        }
+        
+        throw $e;
+    }
+}
 ?>
