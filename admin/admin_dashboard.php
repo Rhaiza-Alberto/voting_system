@@ -816,7 +816,7 @@ $conn->close();
         <div class="navbar-content">
             <div class="navbar-brand">
                 <div class="brand-text">
-                    <h1>VoteSystem Pro</h1>
+                    <h1>VoteSystem</h1>
                     <p>Admin Dashboard</p>
                 </div>
             </div>

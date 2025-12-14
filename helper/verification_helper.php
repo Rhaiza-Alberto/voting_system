@@ -242,7 +242,7 @@ class VerificationHelper {
         </div>
         
         <div class='email-content'>
-            <h2>Hello, " . htmlspecialchars($fullName) . "! 👋</h2>
+            <h2>Hello, " . htmlspecialchars($fullName) . "! </h2>
             
             <p>Thank you for registering with the <strong>WMSU Classroom Voting System</strong>. We're excited to have you join our democratic community!</p>
             
@@ -258,12 +258,12 @@ class VerificationHelper {
             <div class='link-box'>" . htmlspecialchars($verificationLink) . "</div>
             
             <div class='warning-box'>
-                <strong>⏰ Important Notice</strong>
+                <strong> Important Notice</strong>
                 <p>This verification link will expire in <strong>24 hours</strong>. If you did not create an account, please ignore this email.</p>
             </div>
             
             <div class='steps-section'>
-                <h3>📋 What happens next?</h3>
+                <h3> What happens next?</h3>
                 <ul class='steps-list'>
                     <li><strong>Step 1:</strong> Click the verification link above</li>
                     <li><strong>Step 2:</strong> Your account will be activated immediately</li>

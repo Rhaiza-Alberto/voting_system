@@ -38,7 +38,7 @@ $tables = [
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Restore Deleted Records - VoteSystem Pro</title>
+    <title>Restore Deleted Records - VoteSystem</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * {
@@ -429,7 +429,7 @@ $tables = [
     <nav class="modern-navbar">
         <div class="navbar-content">
             <div class="navbar-brand">
-                <h1>VoteSystem Pro</h1>
+                <h1>VoteSystem</h1>
             </div>
             <a href="admin_dashboard.php" class="btn-modern btn-secondary">Back to Dashboard</a>
         </div>
