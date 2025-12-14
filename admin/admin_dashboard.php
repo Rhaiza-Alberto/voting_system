@@ -998,7 +998,7 @@ $conn->close();
                         <span>View Results</span>
                     </a>
                     <a href="audit_logs.php" class="action-btn">
-                        <span>Audit Logs</span>
+                        <span>Election History</span>
                     </a>
                     <a href="restore_deleted.php" class="action-btn">
                         <span>Restore Records</span>

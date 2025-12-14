@@ -549,7 +549,7 @@ if ($debugMode) {
             <div class="navbar-brand">
                 <div class="brand-text">
                     <h1>VoteSystem Pro</h1>
-                    <p>Audit Logs & Election History</p>
+                    <p>Election History</p>
                 </div>
             </div>
             <a href="../admin/admin_dashboard.php" class="btn-modern btn-secondary">Back to Dashboard</a>
